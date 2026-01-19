@@ -77,7 +77,7 @@ let updateInterval: number | null = null
 let timeInterval: number | null = null
 
 const displayedFilms = computed(() => {
-  return boardData.value.films.slice(0, 6)
+  return boardData.value.films
 })
 
 const boardStyle = computed(() => {
@@ -190,8 +190,8 @@ onUnmounted(() => {
 .films-showcase {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  grid-template-rows: 1fr;
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: 1fr;
   gap: 30px;
   padding: 60px 40px;
   overflow: hidden;
