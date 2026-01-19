@@ -1,12 +1,6 @@
 <template>
   <div class="board-container" ref="containerRef">
     <div class="board-content" :style="boardStyle">
-      <!-- Шапка с часами и датой -->
-      <header class="board-header">
-        <div class="current-time">{{ currentTime }}</div>
-        <div class="current-date">{{ currentDate }}</div>
-      </header>
-
       <!-- Витрина фильмов -->
       <main class="films-showcase">
         <div
@@ -191,28 +185,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-}
-
-.board-header {
-  padding: 40px 80px;
-  text-align: center;
-  background: rgba(0, 0, 0, 0.3);
-  border-bottom: 3px solid rgba(255, 255, 255, 0.1);
-  flex-shrink: 0;
-}
-
-.current-time {
-  font-size: 120px;
-  font-weight: bold;
-  color: #fff;
-  margin-bottom: 20px;
-  font-family: 'Courier New', monospace;
-}
-
-.current-date {
-  font-size: 56px;
-  color: rgba(255, 255, 255, 0.8);
-  text-transform: capitalize;
 }
 
 .films-showcase {
