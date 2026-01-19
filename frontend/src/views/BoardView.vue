@@ -7,10 +7,10 @@
         <div class="current-date">{{ currentDate }}</div>
       </header>
 
-      <!-- Карточки фильмов -->
-      <main class="films-container">
+      <!-- Витрина фильмов -->
+      <main class="films-showcase">
         <div
-          v-for="film in boardData.films"
+          v-for="film in displayedFilms"
           :key="film.id"
           class="film-card"
           :class="{
@@ -18,7 +18,7 @@
             'film-next': hasNextShowtime(film)
           }"
         >
-          <!-- Постер фильма -->
+          <!-- Постер фильма слева -->
           <div class="film-poster">
             <img
               v-if="film.posterUrl"
@@ -31,57 +31,37 @@
             </div>
           </div>
 
-          <!-- Информация о фильме -->
+          <!-- Информация справа -->
           <div class="film-info">
-            <h2 class="film-title">{{ film.title }}</h2>
+            <!-- Название фильма -->
+            <h2 class="film-title">{{ film.title.toUpperCase() }}</h2>
             
+            <!-- Мета-информация: возраст и формат -->
             <div class="film-meta">
-              <span v-if="film.format" class="meta-badge format">{{ film.format }}</span>
-              <span class="meta-badge age">{{ film.ageRating }}</span>
-              <span class="meta-badge duration">{{ film.durationMin }} мин</span>
+              <span class="meta-chip age">{{ film.ageRating }}</span>
+              <span v-if="film.format" class="meta-chip format">{{ film.format }}</span>
             </div>
 
-            <p v-if="film.description" class="film-description">{{ film.description }}</p>
-
-            <!-- Расписание сеансов -->
-            <div class="showtimes-section">
-              <h3 class="showtimes-title">Расписание сеансов:</h3>
-              <div class="showtimes-grid">
-                <div
-                  v-for="showtime in film.showtimes"
-                  :key="showtime.id"
-                  class="showtime-badge"
-                  :class="{
-                    'showtime-active': isActive(showtime),
-                    'showtime-next': isNext(showtime, film.showtimes)
-                  }"
-                >
-                  <div class="showtime-time">{{ showtime.time }}</div>
-                  <div class="showtime-hall">{{ showtime.hallName }}</div>
-                  <div v-if="showtime.priceFrom" class="showtime-price">
-                    {{ showtime.priceFrom }} ₽
-                  </div>
-                  <div v-if="showtime.note" class="showtime-note">{{ showtime.note }}</div>
-                </div>
+            <!-- Времена сеансов чипами -->
+            <div class="showtimes-chips">
+              <div
+                v-for="showtime in film.showtimes"
+                :key="showtime.id"
+                class="showtime-chip"
+                :class="{
+                  'chip-active': isActive(showtime),
+                  'chip-next': isNext(showtime, film.showtimes)
+                }"
+              >
+                {{ showtime.time }}
               </div>
               <div v-if="film.showtimes.length === 0" class="no-showtimes">
-                Нет сеансов на сегодня
+                Нет сеансов
               </div>
             </div>
           </div>
         </div>
-
-        <!-- Сообщение, если нет фильмов -->
-        <div v-if="boardData.films.length === 0" class="no-films">
-          <div class="no-films-icon">🎭</div>
-          <div class="no-films-text">На сегодня нет сеансов</div>
-        </div>
       </main>
-
-      <!-- Нижняя строка (ticker) -->
-      <footer class="board-footer">
-        <div class="ticker">{{ tickerText }}</div>
-      </footer>
     </div>
   </div>
 </template>
@@ -98,30 +78,18 @@ const boardData = ref<BoardResponse>({
 
 const currentTime = ref('')
 const currentDate = ref('')
-const tickerText = 'Добро пожаловать в кинотеатр! Приятного просмотра!'
 
 let updateInterval: number | null = null
 let timeInterval: number | null = null
 
+const displayedFilms = computed(() => {
+  return boardData.value.films.slice(0, 12)
+})
+
 const boardStyle = computed(() => {
-  if (!containerRef.value) return {}
-  
-  const container = containerRef.value
-  const containerWidth = container.clientWidth
-  const containerHeight = container.clientHeight
-  
-  const targetWidth = 9600
-  const targetHeight = 1080
-  
-  const scaleX = containerWidth / targetWidth
-  const scaleY = containerHeight / targetHeight
-  const scale = Math.min(scaleX, scaleY)
-  
   return {
-    width: `${targetWidth}px`,
-    height: `${targetHeight}px`,
-    transform: `scale(${scale})`,
-    transformOrigin: 'top left'
+    width: '9600px',
+    height: '1080px'
   }
 })
 
@@ -154,7 +122,6 @@ function isNext(showtime: BoardShowtime, allShowtimes: BoardShowtime[]): boolean
   
   if (showtimeStart <= now) return false
   
-  // Проверяем, что это ближайший следующий сеанс
   const futureShowtimes = allShowtimes
     .filter(s => new Date(s.startAt) > now)
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
@@ -174,7 +141,6 @@ function hasNextShowtime(film: BoardFilm): boolean {
   
   if (futureShowtimes.length === 0) return false
   
-  // Проверяем, что это ближайший следующий фильм среди всех
   const allFutureShowtimes = boardData.value.films
     .flatMap(f => f.showtimes)
     .filter(s => new Date(s.startAt) > now)
@@ -196,10 +162,7 @@ onMounted(() => {
   updateTime()
   loadBoard()
   
-  // Обновление времени каждую секунду
   timeInterval = window.setInterval(updateTime, 1000)
-  
-  // Обновление данных табло каждые 30 секунд
   updateInterval = window.setInterval(loadBoard, 30000)
 })
 
@@ -223,90 +186,98 @@ onUnmounted(() => {
 }
 
 .board-content {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
   color: #fff;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .board-header {
   padding: 40px 80px;
   text-align: center;
-  background: rgba(0, 0, 0, 0.4);
-  border-bottom: 4px solid #00d4ff;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 3px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
 }
 
 .current-time {
-  font-size: 100px;
+  font-size: 120px;
   font-weight: bold;
-  color: #00d4ff;
-  text-shadow: 0 0 30px rgba(0, 212, 255, 0.6);
-  margin-bottom: 16px;
+  color: #fff;
+  margin-bottom: 20px;
   font-family: 'Courier New', monospace;
 }
 
 .current-date {
-  font-size: 42px;
-  color: #fff;
+  font-size: 56px;
+  color: rgba(255, 255, 255, 0.8);
   text-transform: capitalize;
 }
 
-.films-container {
+.films-showcase {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 50px;
-  padding: 50px 80px;
-  overflow-y: auto;
-  align-content: start;
+  grid-template-columns: repeat(12, 1fr);
+  grid-template-rows: 1fr;
+  gap: 30px;
+  padding: 60px 40px;
+  overflow: hidden;
+  justify-content: start;
+  align-items: stretch;
 }
 
 .film-card {
-  background: rgba(255, 255, 255, 0.08);
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.05);
   border: 3px solid rgba(255, 255, 255, 0.15);
   border-radius: 20px;
-  overflow: hidden;
-  transition: all 0.3s ease;
+  padding: 0;
   display: flex;
-  flex-direction: column;
-  min-height: 800px;
+  flex-direction: row;
+  justify-content: flex-start;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
 }
 
 .film-card:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.25);
   transform: translateY(-5px);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
 }
 
 .film-card.film-active {
-  background: rgba(0, 212, 255, 0.15);
+  background: rgba(0, 212, 255, 0.1);
   border-color: #00d4ff;
-  box-shadow: 0 0 50px rgba(0, 212, 255, 0.4);
+  box-shadow: 0 0 40px rgba(0, 212, 255, 0.4);
 }
 
 .film-card.film-next {
-  background: rgba(255, 193, 7, 0.12);
+  background: rgba(255, 193, 7, 0.1);
   border-color: #ffc107;
   box-shadow: 0 0 30px rgba(255, 193, 7, 0.3);
 }
 
 .film-poster {
-  width: 100%;
-  height: 500px;
-  background: rgba(0, 0, 0, 0.3);
+  width: auto;
+  height: 100%;
+  flex: 0 0 auto;
+  aspect-ratio: 2/3;
+  background: rgba(0, 0, 0, 0.5);
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  flex-shrink: 0;
 }
 
 .poster-image {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
 }
 
 .poster-placeholder {
@@ -319,186 +290,112 @@ onUnmounted(() => {
 }
 
 .poster-icon {
-  font-size: 120px;
-  opacity: 0.5;
+  font-size: 80px;
+  opacity: 0.3;
 }
 
 .film-info {
-  padding: 40px;
   flex: 1;
+  padding: 40px;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
 }
 
 .film-title {
-  font-size: 56px;
+  font-size: 48px;
   font-weight: bold;
   color: #fff;
-  margin-bottom: 24px;
+  margin: 0 0 30px 0;
   line-height: 1.2;
+  letter-spacing: 1px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
 .film-meta {
   display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
+  flex-direction: row;
+  gap: 15px;
+  margin: 0 0 30px 0;
   flex-wrap: wrap;
 }
 
-.meta-badge {
-  font-size: 28px;
-  padding: 10px 20px;
+.meta-chip {
+  padding: 12px 24px;
   border-radius: 8px;
+  font-size: 24px;
   font-weight: 600;
+  display: inline-block;
+  text-align: center;
 }
 
-.meta-badge.format {
-  background: rgba(0, 212, 255, 0.3);
-  color: #00d4ff;
-  border: 2px solid #00d4ff;
-}
-
-.meta-badge.age {
+.meta-chip.age {
   background: rgba(255, 193, 7, 0.3);
   color: #ffc107;
   border: 2px solid #ffc107;
 }
 
-.meta-badge.duration {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+.meta-chip.format {
+  background: rgba(0, 212, 255, 0.3);
+  color: #00d4ff;
+  border: 2px solid #00d4ff;
 }
 
-.film-description {
-  font-size: 28px;
-  color: #ccc;
-  line-height: 1.5;
-  margin-bottom: 32px;
-  flex: 1;
-}
-
-.showtimes-section {
+.showtimes-chips {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: center;
   margin-top: auto;
 }
 
-.showtimes-title {
-  font-size: 36px;
-  color: #00d4ff;
-  margin-bottom: 20px;
-  font-weight: 600;
-}
-
-.showtimes-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-}
-
-.showtime-badge {
+.showtime-chip {
+  padding: 16px 24px;
   background: rgba(255, 255, 255, 0.1);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-  padding: 20px;
-  text-align: center;
-  transition: all 0.3s ease;
-}
-
-.showtime-badge:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.showtime-badge.showtime-active {
-  background: rgba(0, 212, 255, 0.25);
-  border-color: #00d4ff;
-  box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
-}
-
-.showtime-badge.showtime-next {
-  background: rgba(255, 193, 7, 0.2);
-  border-color: #ffc107;
-  box-shadow: 0 0 15px rgba(255, 193, 7, 0.3);
-}
-
-.showtime-time {
-  font-size: 42px;
-  font-weight: bold;
-  color: #00d4ff;
-  margin-bottom: 8px;
-  font-family: 'Courier New', monospace;
-}
-
-.showtime-hall {
-  font-size: 24px;
-  color: #fff;
-  margin-bottom: 8px;
-}
-
-.showtime-price {
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
   font-size: 28px;
-  color: #4caf50;
   font-weight: 600;
-  margin-top: 8px;
+  color: #fff;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  text-align: center;
 }
 
-.showtime-note {
-  font-size: 20px;
-  color: #aaa;
-  margin-top: 8px;
-  font-style: italic;
+.showtime-chip:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: scale(1.05);
+}
+
+.showtime-chip.chip-active {
+  background: rgba(0, 212, 255, 0.3);
+  border-color: #00d4ff;
+  color: #00d4ff;
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+  font-weight: bold;
+}
+
+.showtime-chip.chip-next {
+  background: rgba(255, 193, 7, 0.3);
+  border-color: #ffc107;
+  color: #ffc107;
+  box-shadow: 0 0 15px rgba(255, 193, 7, 0.3);
+  font-weight: bold;
 }
 
 .no-showtimes {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 24px;
+  font-style: italic;
+  padding: 12px;
   text-align: center;
-  padding: 40px;
-  font-size: 28px;
-  color: #666;
-}
-
-.no-films {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 100px;
-  text-align: center;
-}
-
-.no-films-icon {
-  font-size: 120px;
-  margin-bottom: 30px;
-  opacity: 0.5;
-}
-
-.no-films-text {
-  font-size: 48px;
-  color: #666;
-}
-
-.board-footer {
-  padding: 30px 80px;
-  background: rgba(0, 0, 0, 0.5);
-  border-top: 2px solid #00d4ff;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.ticker {
-  font-size: 36px;
-  color: #00d4ff;
-  white-space: nowrap;
-  animation: ticker-scroll 30s linear infinite;
-  text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
-}
-
-@keyframes ticker-scroll {
-  0% {
-    transform: translateX(100%);
-  }
-  100% {
-    transform: translateX(-100%);
-  }
 }
 </style>
