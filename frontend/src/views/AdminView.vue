@@ -113,6 +113,61 @@
         </table>
       </div>
 
+      <!-- Расписание недели -->
+      <div v-if="activeTab === 'schedule'" class="tab-content">
+        <div class="section-header">
+          <h2>Расписание на неделю</h2>
+          <div class="week-selector">
+            <button @click="previousWeek" class="week-nav-button">← Предыдущая</button>
+            <span class="week-label">{{ currentWeekLabel }}</span>
+            <button @click="nextWeek" class="week-nav-button">Следующая →</button>
+          </div>
+        </div>
+        
+        <div class="schedule-table-container">
+          <table class="schedule-table">
+            <thead>
+              <tr>
+                <th class="time-header">Время / Зал</th>
+                <th v-for="hall in halls" :key="hall.id" class="hall-header">
+                  {{ hall.name }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="day in weekDays" :key="day.date">
+                <td class="day-cell">
+                  <div class="day-name">{{ day.name }}</div>
+                  <div class="day-date">{{ day.date }}</div>
+                </td>
+                <td
+                  v-for="hall in halls"
+                  :key="`${day.date}-${hall.id}`"
+                  class="schedule-cell"
+                  @click="openScheduleCell(day.date, hall.id)"
+                >
+                  <div class="cell-content">
+                    <div
+                      v-for="showtime in getShowtimesForCell(day.date, hall.id)"
+                      :key="showtime.id"
+                      class="showtime-item"
+                      @click.stop="editShowtimeFromSchedule(showtime)"
+                    >
+                      <div class="showtime-time">{{ formatTime(showtime.startAt) }}</div>
+                      <div class="showtime-title">{{ showtime.filmTitle }}</div>
+                      <div class="showtime-format" v-if="showtime.format">{{ showtime.format }}</div>
+                    </div>
+                    <div v-if="getShowtimesForCell(day.date, hall.id).length === 0" class="empty-cell">
+                      Кликните для добавления
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Залы -->
       <div v-if="activeTab === 'halls'" class="tab-content">
         <div class="section-header">
@@ -313,7 +368,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { logout, getMe } from '../api/auth'
 import {
@@ -336,11 +391,165 @@ import { getFilmById, type KinopoiskFilm } from '../api/kinopoisk'
 const router = useRouter()
 const user = ref<any>(null)
 
-const activeTab = ref<'films' | 'showtimes' | 'halls'>('films')
+const activeTab = ref<'films' | 'showtimes' | 'schedule' | 'halls'>('films')
+const tabs = ['films', 'showtimes', 'schedule', 'halls'] as const
 const tabLabels = {
   films: 'Фильмы',
   showtimes: 'Сеансы',
+  schedule: 'Расписание',
   halls: 'Залы'
+}
+
+// Расписание недели
+const currentWeekStart = ref<Date>(getWeekStartForToday())
+const weekShowtimes = ref<any[]>([])
+
+function getWeekStart(date: Date): Date {
+  const d = new Date(date)
+  const day = d.getDay()
+  // Четверг = 4, сдвигаем к началу недели (четверг)
+  // Если день < 4 (пн-ср), отнимаем дни до четверга прошлой недели
+  // Если день >= 4 (чт-вс), отнимаем дни до четверга текущей недели
+  let diff: number
+  if (day === 0) { // Воскресенье
+    diff = -3
+  } else if (day < 4) { // Понедельник-среда
+    diff = day + 3 // До четверга прошлой недели
+  } else { // Четверг-суббота
+    diff = day - 4 // До четверга текущей недели
+  }
+  d.setDate(d.getDate() - diff)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function getWeekStartForToday(): Date {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  // Всегда показываем неделю, которая включает сегодня
+  // getWeekStart уже вычисляет правильное начало недели для любого дня
+  return getWeekStart(today)
+}
+
+function getWeekDays(startDate: Date): Array<{ name: string; date: string }> {
+  const days = ['Четверг', 'Пятница', 'Суббота', 'Воскресенье', 'Понедельник', 'Вторник', 'Среда']
+  const result: Array<{ name: string; date: string }> = []
+  
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(startDate)
+    date.setDate(startDate.getDate() + i)
+    date.setHours(0, 0, 0, 0)
+    const dateStr = date.toISOString().split('T')[0]
+    
+    // Показываем только будущие дни или сегодня (не прошедшие дни)
+    if (date >= today) {
+      result.push({
+        name: days[i],
+        date: dateStr
+      })
+    }
+  }
+  
+  return result
+}
+
+const weekDays = computed(() => getWeekDays(currentWeekStart.value))
+
+const currentWeekLabel = computed(() => {
+  const start = currentWeekStart.value
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  
+  const formatDate = (d: Date) => {
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+  }
+  
+  return `${formatDate(start)} - ${formatDate(end)}`
+})
+
+function previousWeek() {
+  const newDate = new Date(currentWeekStart.value)
+  newDate.setDate(newDate.getDate() - 7)
+  currentWeekStart.value = newDate
+  loadWeekShowtimes()
+}
+
+function nextWeek() {
+  const newDate = new Date(currentWeekStart.value)
+  newDate.setDate(newDate.getDate() + 7)
+  currentWeekStart.value = newDate
+  loadWeekShowtimes()
+}
+
+async function loadWeekShowtimes() {
+  try {
+    const startDate = currentWeekStart.value.toISOString().split('T')[0]
+    const endDate = new Date(currentWeekStart.value)
+    endDate.setDate(endDate.getDate() + 6)
+    const endDateStr = endDate.toISOString().split('T')[0]
+    
+    // Загружаем сеансы за всю неделю
+    const allShowtimes: any[] = []
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(currentWeekStart.value)
+      date.setDate(currentWeekStart.value.getDate() + i)
+      const dateStr = date.toISOString().split('T')[0]
+      const dayShowtimes = await getShowtimes({ date: dateStr })
+      allShowtimes.push(...dayShowtimes)
+    }
+    
+    weekShowtimes.value = allShowtimes
+  } catch (error) {
+    console.error('Error loading week showtimes:', error)
+  }
+}
+
+function getShowtimesForCell(date: string, hallId: number) {
+  return weekShowtimes.value.filter(s => {
+    const showtimeDate = s.startAt.split('T')[0]
+    return showtimeDate === date && s.hallId === hallId && !s.isHidden
+  }).sort((a, b) => a.startAt.localeCompare(b.startAt))
+}
+
+function formatTime(isoString: string): string {
+  const date = new Date(isoString)
+  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
+
+const scheduleCellDate = ref<string>('')
+const scheduleCellHallId = ref<number | null>(null)
+
+function openScheduleCell(date: string, hallId: number) {
+  scheduleCellDate.value = date
+  scheduleCellHallId.value = hallId
+  // Открываем модальное окно сеанса с предзаполненными данными
+  showtimeForm.value = {
+    hallId,
+    filmId: undefined,
+    startAt: `${date}T10:00`,
+    priceFrom: null,
+    note: null,
+    isHidden: false
+  }
+  editingShowtime.value = null
+  showtimeModalOpen.value = true
+}
+
+function editShowtimeFromSchedule(showtime: any) {
+  editingShowtime.value = showtime
+  showtimeForm.value = {
+    hallId: showtime.hallId,
+    filmId: showtime.filmId,
+    startAt: showtime.startAt.slice(0, 16), // datetime-local format
+    priceFrom: showtime.priceFrom,
+    note: showtime.note,
+    isHidden: showtime.isHidden
+  }
+  showtimeModalOpen.value = true
 }
 
 const films = ref<Film[]>([])
@@ -596,6 +805,7 @@ async function saveShowtime() {
       await createShowtime(data as Showtime)
     }
     await loadShowtimes()
+    await loadWeekShowtimes() // Обновляем расписание недели
     closeShowtimeModal()
   } catch (err: any) {
     showtimeError.value = err.response?.data?.message || err.response?.data?.error || 'Ошибка сохранения'
@@ -604,8 +814,13 @@ async function saveShowtime() {
 
 async function deleteShowtimeHandler(id: number) {
   if (confirm('Удалить сеанс?')) {
-    await deleteShowtime(id)
-    await loadShowtimes()
+    try {
+      await deleteShowtime(id)
+      await loadShowtimes()
+      await loadWeekShowtimes() // Обновляем расписание недели
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Ошибка удаления')
+    }
   }
 }
 
@@ -631,6 +846,14 @@ onMounted(async () => {
   await loadFilms()
   await loadShowtimes()
   await loadHalls()
+  await loadWeekShowtimes()
+})
+
+// Загружаем расписание недели при переключении на вкладку
+watch(activeTab, (newTab) => {
+  if (newTab === 'schedule') {
+    loadWeekShowtimes()
+  }
 })
 </script>
 
@@ -711,6 +934,11 @@ onMounted(async () => {
   border-radius: 8px;
   padding: 30px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: visible;
+}
+
+.tab-content:has(.schedule-table-container) {
+  padding-bottom: 20px;
 }
 
 .section-header {
@@ -784,6 +1012,151 @@ onMounted(async () => {
 
 .data-table tr:hover {
   background: #f9f9f9;
+}
+
+/* Расписание недели */
+.week-selector {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.week-nav-button {
+  padding: 8px 16px;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.week-nav-button:hover {
+  background: #e0e0e0;
+}
+
+.week-label {
+  font-weight: 600;
+  color: #333;
+  min-width: 200px;
+  text-align: center;
+}
+
+.schedule-table-container {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 300px);
+  margin-top: 20px;
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  min-width: 800px;
+}
+
+.schedule-table th {
+  background: #f5f5f5;
+  padding: 12px;
+  text-align: center;
+  font-weight: 600;
+  border: 1px solid #ddd;
+}
+
+.time-header {
+  min-width: 120px;
+}
+
+.hall-header {
+  min-width: 200px;
+}
+
+.schedule-table td {
+  border: 1px solid #ddd;
+  padding: 0;
+  vertical-align: top;
+}
+
+.day-cell {
+  background: #f9f9f9;
+  padding: 12px !important;
+  text-align: center;
+  font-weight: 600;
+  min-width: 120px;
+}
+
+.day-name {
+  font-size: 16px;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.day-date {
+  font-size: 12px;
+  color: #666;
+}
+
+.schedule-cell {
+  min-height: 150px;
+  cursor: pointer;
+  transition: background 0.2s;
+  position: relative;
+}
+
+.schedule-cell:hover {
+  background: #f0f7ff;
+}
+
+.cell-content {
+  padding: 8px;
+  min-height: 150px;
+}
+
+.empty-cell {
+  color: #999;
+  font-size: 12px;
+  text-align: center;
+  padding: 20px;
+  font-style: italic;
+}
+
+.showtime-item {
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.showtime-item:hover {
+  background: #bbdefb;
+  border-color: #64b5f6;
+}
+
+.showtime-time {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1976d2;
+  margin-bottom: 4px;
+}
+
+.showtime-title {
+  font-size: 13px;
+  color: #333;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.showtime-format {
+  font-size: 11px;
+  color: #666;
+  font-style: italic;
 }
 
 .poster-cell {
