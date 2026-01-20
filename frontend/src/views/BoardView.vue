@@ -77,11 +77,7 @@
                     v-for="showtime in getActiveShowtimes(film.showtimes)"
                     :key="showtime.id"
                     class="showtime-chip"
-                    :class="{
-                      'chip-active': isActive(showtime),
-                      'chip-next': isNext(showtime, film.showtimes),
-                      'chip-upcoming': isUpcoming(showtime)
-                    }"
+                    :class="getShowtimeClass(showtime, film.showtimes)"
                   >
                     {{ getShowtimeDisplay(showtime, film.showtimes) }}
                   </div>
@@ -152,6 +148,36 @@ const monitors = computed(() => {
   return result
 })
 
+// Вычисляем ближайший сеанс один раз для всех фильмов
+// Используем currentTime для реактивности - будет пересчитываться каждую секунду
+const nearestShowtimeTime = computed(() => {
+  // Используем currentTime для реактивности обновления
+  const _ = currentTime.value
+  
+  // Проверяем, что данные загружены
+  if (!boardData.value || !boardData.value.films || boardData.value.films.length === 0) {
+    return null
+  }
+  
+  const now = new Date()
+  const allFutureShowtimes = boardData.value.films
+    .flatMap(f => f.showtimes || [])
+    .filter(s => {
+      if (!s || s.isHidden) return false
+      const sStart = new Date(s.startAt)
+      const sEnd = new Date(s.endAt)
+      // Сеанс должен быть в будущем и еще не закончиться
+      return sStart > now && sEnd > now
+    })
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+  
+  if (allFutureShowtimes.length === 0) return null
+  
+  // Возвращаем время ближайшего сеанса
+  const nearestTime = new Date(allFutureShowtimes[0].startAt).getTime()
+  return nearestTime
+})
+
 const boardStyle = computed(() => {
   return {
     width: '9600px',
@@ -187,17 +213,69 @@ function isActive(showtime: BoardShowtime): boolean {
   return now >= start && now <= end
 }
 
+function getShowtimeClass(showtime: BoardShowtime, filmShowtimes: BoardShowtime[]): string {
+  // Игнорируем скрытые сеансы
+  if (showtime.isHidden) return ''
+  
+  const now = new Date()
+  const showtimeStart = new Date(showtime.startAt)
+  const showtimeEnd = new Date(showtime.endAt)
+  
+  // Идущие сеансы - серые
+  if (now >= showtimeStart && now <= showtimeEnd) {
+    return 'chip-active'
+  }
+  
+  // Ближайший сеанс должен быть в будущем
+  if (showtimeStart <= now) return ''
+  
+  // Находим ближайший предстоящий сеанс для этого конкретного фильма
+  const futureShowtimes = filmShowtimes
+    .filter(s => {
+      if (s.isHidden) return false
+      const sStart = new Date(s.startAt)
+      const sEnd = new Date(s.endAt)
+      return sStart > now && sEnd > now
+    })
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+  
+  if (futureShowtimes.length > 0) {
+    const nearestFilmTime = new Date(futureShowtimes[0].startAt).getTime()
+    const showtimeTime = showtimeStart.getTime()
+    
+    // Сравниваем время с точностью до минуты
+    const showtimeMinutes = Math.floor(showtimeTime / 60000)
+    const nearestMinutes = Math.floor(nearestFilmTime / 60000)
+    
+    // Если это ближайший сеанс этого фильма - оранжевый мигающий
+    if (showtimeMinutes === nearestMinutes) {
+      return 'chip-next'
+    }
+  }
+  
+  // Все остальные предстоящие - голубые
+  return 'chip-upcoming'
+}
+
 function isNext(showtime: BoardShowtime, allShowtimes: BoardShowtime[]): boolean {
+  // Игнорируем скрытые сеансы
+  if (showtime.isHidden) return false
+  
   const now = new Date()
   const showtimeStart = new Date(showtime.startAt)
   
+  // Ближайший сеанс должен быть в будущем
   if (showtimeStart <= now) return false
   
-  const futureShowtimes = allShowtimes
-    .filter(s => !s.isHidden && new Date(s.startAt) > now)
-    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+  // Используем вычисленное ближайшее время
+  const nearestTime = nearestShowtimeTime.value
+  if (nearestTime === null) return false
   
-  return futureShowtimes.length > 0 && futureShowtimes[0].id === showtime.id
+  const showtimeTime = showtimeStart.getTime()
+  
+  // Проверяем, начинается ли этот сеанс в самое ближайшее время
+  // (все сеансы, начинающиеся в одно и то же ближайшее время, должны быть оранжевыми)
+  return showtimeTime === nearestTime
 }
 
 function isUpcoming(showtime: BoardShowtime): boolean {
@@ -210,14 +288,12 @@ function isUpcoming(showtime: BoardShowtime): boolean {
   // Если сеанс уже прошел или идет сейчас, не показываем как предстоящий
   if (showtimeStart <= now) return false
   
-  // Находим самый ближайший сеанс среди всех фильмов (игнорируем скрытые)
-  const allFutureShowtimes = boardData.value.films
-    .flatMap(f => f.showtimes)
-    .filter(s => !s.isHidden && new Date(s.startAt) > now)
-    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+  // Используем вычисленное ближайшее время
+  const nearestTime = nearestShowtimeTime.value
+  if (nearestTime === null) return false
   
-  // Если это самый ближайший сеанс, не применяем класс upcoming (он будет chip-next)
-  if (allFutureShowtimes.length > 0 && allFutureShowtimes[0].id === showtime.id) {
+  // Если этот сеанс начинается в самое ближайшее время, не применяем класс upcoming (он будет chip-next)
+  if (showtimeStart.getTime() === nearestTime) {
     return false
   }
   
@@ -710,11 +786,11 @@ onUnmounted(() => {
 }
 
 .showtime-chip.chip-next {
-  animation: showtimeBlink 1.5s ease-in-out infinite;
-  background: rgba(255, 193, 7, 0.4);
-  border-color: #ffc107;
-  color: #ffc107;
-  box-shadow: 0 0 20px rgba(255, 193, 7, 0.6);
+  animation: showtimeBlink 1.5s ease-in-out infinite !important;
+  background: rgba(255, 193, 7, 0.4) !important;
+  border-color: #ffc107 !important;
+  color: #ffc107 !important;
+  box-shadow: 0 0 20px rgba(255, 193, 7, 0.6) !important;
   font-weight: bold;
 }
 
