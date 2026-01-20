@@ -2,6 +2,8 @@ import { FastifyInstance } from 'fastify';
 import { db } from '../db';
 import { requireAuth } from '../auth';
 import { Film, Showtime, Hall } from '../types';
+import { readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 
 export async function adminRoutes(fastify: FastifyInstance) {
   // Требуем авторизацию для всех админских роутов
@@ -116,14 +118,23 @@ export async function adminRoutes(fastify: FastifyInstance) {
   // ===== SHOWTIMES =====
   
   fastify.get('/api/admin/showtimes', async (request) => {
-    const { date, hallId } = request.query as { date?: string; hallId?: string };
+    const { date, hallId, startDate, endDate } = request.query as { 
+      date?: string; 
+      hallId?: string;
+      startDate?: string;
+      endDate?: string;
+    };
     
     let query = 'SELECT s.*, f.title as filmTitle, f.durationMin as filmDuration FROM showtimes s';
     query += ' JOIN films f ON s.filmId = f.id';
     const conditions: string[] = [];
     const params: any[] = [];
     
-    if (date) {
+    // Поддержка диапазона дат для оптимизации загрузки недели
+    if (startDate && endDate) {
+      conditions.push("DATE(s.startAt) >= ? AND DATE(s.startAt) <= ?");
+      params.push(startDate, endDate);
+    } else if (date) {
       conditions.push("DATE(s.startAt) = ?");
       params.push(date);
     }
@@ -325,5 +336,40 @@ export async function adminRoutes(fastify: FastifyInstance) {
     
     const hall = db.prepare('SELECT * FROM halls WHERE id = ?').get(Number(id)) as Hall;
     return { hall };
+  });
+
+  // Получить цены
+  fastify.get('/api/admin/prices', async () => {
+    try {
+      const pricesPath = join(process.cwd(), '..', 'frontend', 'src', 'data', 'prices.json');
+      const fileContent = readFileSync(pricesPath, 'utf-8');
+      const pricesData = JSON.parse(fileContent);
+      return { prices: pricesData.prices };
+    } catch (error: any) {
+      return { prices: [250, 300, 350, 400, 500] }; // Значения по умолчанию
+    }
+  });
+
+  // Сохранить цены
+  fastify.put('/api/admin/prices', async (request, reply) => {
+    const data = request.body as { prices: number[] };
+    
+    if (!Array.isArray(data.prices)) {
+      return reply.code(400).send({ error: 'prices must be an array' });
+    }
+
+    // Валидация: все элементы должны быть числами и положительными
+    if (!data.prices.every(p => typeof p === 'number' && p > 0)) {
+      return reply.code(400).send({ error: 'All prices must be positive numbers' });
+    }
+
+    try {
+      const pricesPath = join(process.cwd(), '..', 'frontend', 'src', 'data', 'prices.json');
+      const pricesData = { prices: data.prices };
+      writeFileSync(pricesPath, JSON.stringify(pricesData, null, 2), 'utf-8');
+      return { prices: data.prices };
+    } catch (error: any) {
+      return reply.code(500).send({ error: 'Failed to save prices', message: error.message });
+    }
   });
 }

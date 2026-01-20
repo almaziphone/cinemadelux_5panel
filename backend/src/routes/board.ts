@@ -15,7 +15,13 @@ export async function boardRoutes(fastify: FastifyInstance) {
     }>;
     const hallMap = new Map(halls.map(h => [h.id, h.name]));
     
-    // Получаем сеансы на указанную дату (только активные фильмы и не скрытые сеансы)
+    // Вычисляем дату завтра для получения сеансов на сегодня и завтра
+    const targetDateObj = new Date(targetDate + 'T00:00:00');
+    const tomorrowDateObj = new Date(targetDateObj);
+    tomorrowDateObj.setDate(tomorrowDateObj.getDate() + 1);
+    const tomorrowDate = tomorrowDateObj.toISOString().split('T')[0];
+    
+    // Получаем сеансы на указанную дату и завтра (только активные фильмы и не скрытые сеансы)
     const showtimes = db.prepare(`
       SELECT 
         s.id,
@@ -33,11 +39,11 @@ export async function boardRoutes(fastify: FastifyInstance) {
         f.description
       FROM showtimes s
       JOIN films f ON s.filmId = f.id
-      WHERE DATE(s.startAt) = ?
+      WHERE (DATE(s.startAt) = ? OR DATE(s.startAt) = ?)
         AND s.isHidden = 0
         AND f.isActive = 1
       ORDER BY f.title, s.startAt
-    `).all(targetDate) as Array<{
+    `).all(targetDate, tomorrowDate) as Array<{
       id: number;
       hallId: number;
       startAt: string;
@@ -62,7 +68,8 @@ export async function boardRoutes(fastify: FastifyInstance) {
         const time = startDate.toLocaleTimeString('ru-RU', { 
           hour: '2-digit', 
           minute: '2-digit',
-          hour12: false
+          hour12: false,
+          timeZone: 'Asia/Yekaterinburg'
         });
         
         filmMap.set(s.filmId, {
@@ -90,7 +97,8 @@ export async function boardRoutes(fastify: FastifyInstance) {
         const time = startDate.toLocaleTimeString('ru-RU', { 
           hour: '2-digit', 
           minute: '2-digit',
-          hour12: false
+          hour12: false,
+          timeZone: 'Asia/Yekaterinburg'
         });
         
         film.showtimes.push({

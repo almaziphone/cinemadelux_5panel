@@ -26,40 +26,42 @@
           <h2>Фильмы</h2>
           <button @click="openFilmModal()" class="add-button">+ Добавить фильм</button>
         </div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Постер</th>
-              <th>ID Кинопоиска</th>
-              <th>Название</th>
-              <th>Длительность</th>
-              <th>Возраст</th>
-              <th>Формат</th>
-              <th>Активен</th>
-              <th>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="film in films" :key="film.id">
-              <td class="poster-cell">
-                <div v-if="film.posterUrl" class="table-poster">
-                  <img :src="film.posterUrl" :alt="film.title" @error="handleTablePosterError" />
-                </div>
-                <span v-else class="no-poster">—</span>
-              </td>
-              <td>{{ film.kinopoiskId || '-' }}</td>
-              <td>{{ film.title }}</td>
-              <td>{{ film.durationMin }} мин</td>
-              <td>{{ film.ageRating }}</td>
-              <td>{{ film.format || '-' }}</td>
-              <td>{{ film.isActive ? 'Да' : 'Нет' }}</td>
-              <td>
-                <button @click="openFilmModal(film)" class="edit-button">Редактировать</button>
-                <button @click="deleteFilmHandler(film.id!)" class="delete-button">Удалить</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Постер</th>
+                <th>ID Кинопоиска</th>
+                <th>Название</th>
+                <th>Длительность</th>
+                <th>Возраст</th>
+                <th>Формат</th>
+                <th>Активен</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="film in films" :key="film.id">
+                <td class="poster-cell">
+                  <div v-if="film.posterUrl" class="table-poster">
+                    <img :src="film.posterUrl" :alt="film.title" @error="handleTablePosterError" />
+                  </div>
+                  <span v-else class="no-poster">—</span>
+                </td>
+                <td>{{ film.kinopoiskId || '-' }}</td>
+                <td>{{ film.title }}</td>
+                <td>{{ film.durationMin }} мин</td>
+                <td>{{ film.ageRating }}</td>
+                <td>{{ film.format || '-' }}</td>
+                <td>{{ film.isActive ? 'Да' : 'Нет' }}</td>
+                <td>
+                  <button @click="openFilmModal(film)" class="edit-button">Редактировать</button>
+                  <button @click="deleteFilmHandler(film.id!)" class="delete-button">Удалить</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Сеансы -->
@@ -210,6 +212,55 @@
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Цены -->
+      <div v-if="activeTab === 'prices'" class="tab-content">
+        <div class="section-header">
+          <h2>Цены</h2>
+          <div class="prices-actions">
+            <button @click="addPrice" class="add-button">+ Добавить цену</button>
+            <button @click="savePrices" class="save-button" :disabled="pricesSaving">
+              {{ pricesSaving ? 'Сохранение...' : 'Сохранить' }}
+            </button>
+          </div>
+        </div>
+        <div v-if="pricesError" class="error-message">{{ pricesError }}</div>
+        <div v-if="pricesSuccess" class="success-message">{{ pricesSuccess }}</div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 60px">№</th>
+                <th>Цена (₽)</th>
+                <th style="width: 120px">Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(price, index) in pricesList" :key="index">
+                <td>{{ index + 1 }}</td>
+                <td>
+                  <input
+                    v-model.number="pricesList[index]"
+                    type="number"
+                    min="0"
+                    step="50"
+                    class="inline-input"
+                    @input="pricesChanged = true"
+                  />
+                </td>
+                <td>
+                  <button @click="removePrice(index)" class="delete-button">Удалить</button>
+                </td>
+              </tr>
+              <tr v-if="pricesList.length === 0">
+                <td colspan="3" style="text-align: center; color: #999; padding: 20px;">
+                  Нет цен. Добавьте первую цену.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -396,27 +447,54 @@ import {
   deleteShowtime,
   getHalls,
   updateHall,
+  getPrices,
+  updatePrices,
   type Film,
   type Showtime,
   type Hall
 } from '../api/admin'
 import { getFilmById, type KinopoiskFilm } from '../api/kinopoisk'
-import pricesData from '../data/prices.json'
 
 const router = useRouter()
 const user = ref<any>(null)
 
-// Доступные суммы из JSON файла
-const availablePrices = ref<number[]>(pricesData.prices)
+// Доступные суммы из JSON файла (загружаются через API)
+const availablePrices = ref<number[]>([])
 
-const activeTab = ref<'films' | 'showtimes' | 'schedule' | 'halls'>('films')
-const tabs = ['films', 'showtimes', 'schedule', 'halls'] as const
+// Цены для редактирования
+const pricesList = ref<number[]>([])
+const pricesChanged = ref(false)
+const pricesSaving = ref(false)
+const pricesError = ref('')
+const pricesSuccess = ref('')
+
+// Загружаем сохраненный таб из localStorage или используем 'films' по умолчанию
+const savedTab = localStorage.getItem('adminActiveTab') as 'films' | 'showtimes' | 'schedule' | 'halls' | 'prices' | null
+const defaultTab: 'films' | 'showtimes' | 'schedule' | 'halls' | 'prices' = savedTab && ['films', 'showtimes', 'schedule', 'halls', 'prices'].includes(savedTab) 
+  ? savedTab 
+  : 'films'
+
+const activeTab = ref<'films' | 'showtimes' | 'schedule' | 'halls' | 'prices'>(defaultTab)
+const tabs = ['films', 'showtimes', 'schedule', 'halls', 'prices'] as const
 const tabLabels = {
   films: 'Фильмы',
   showtimes: 'Сеансы',
   schedule: 'Расписание',
-  halls: 'Залы'
+  halls: 'Залы',
+  prices: 'Цены'
 }
+
+// Сохраняем активный таб в localStorage при изменении
+watch(activeTab, (newTab) => {
+  localStorage.setItem('adminActiveTab', newTab)
+  
+  // Загружаем данные при переключении на соответствующий таб
+  if (newTab === 'schedule') {
+    loadWeekShowtimes()
+  } else if (newTab === 'prices') {
+    loadPrices()
+  }
+})
 
 // Расписание недели
 const currentWeekStart = ref<Date>(getWeekStartForToday())
@@ -442,31 +520,48 @@ function getWeekStart(date: Date): Date {
 }
 
 function getWeekStartForToday(): Date {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // Получаем текущую дату в часовом поясе Екатеринбурга
+  const now = new Date()
+  const todayYekaterinburg = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Yekaterinburg' }))
+  todayYekaterinburg.setHours(0, 0, 0, 0)
   
   // Всегда показываем неделю, которая включает сегодня
   // getWeekStart уже вычисляет правильное начало недели для любого дня
-  return getWeekStart(today)
+  return getWeekStart(todayYekaterinburg)
 }
 
 function getWeekDays(startDate: Date): Array<{ name: string; date: string }> {
-  const days = ['Четверг', 'Пятница', 'Суббота', 'Воскресенье', 'Понедельник', 'Вторник', 'Среда']
+  const dayNames = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота']
   const result: Array<{ name: string; date: string }> = []
   
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // Получаем текущую дату в часовом поясе Екатеринбурга
+  const now = new Date()
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Yekaterinburg' }) // YYYY-MM-DD формат
   
   for (let i = 0; i < 7; i++) {
     const date = new Date(startDate)
     date.setDate(startDate.getDate() + i)
-    date.setHours(0, 0, 0, 0)
-    const dateStr = date.toISOString().split('T')[0]
+    date.setHours(12, 0, 0, 0) // Устанавливаем полдень для избежания проблем с часовыми поясами
+    
+    // Получаем дату в формате YYYY-MM-DD в часовом поясе Екатеринбурга
+    const dateStr = date.toLocaleDateString('en-CA', { timeZone: 'Asia/Yekaterinburg' })
+    
+    // Получаем день недели для этой даты в часовом поясе Екатеринбурга
+    const dayOfWeekStr = date.toLocaleDateString('en-US', { 
+      weekday: 'long',
+      timeZone: 'Asia/Yekaterinburg'
+    })
+    const dayOfWeekMap: { [key: string]: number } = {
+      'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
+      'Thursday': 4, 'Friday': 5, 'Saturday': 6
+    }
+    const dayOfWeek = dayOfWeekMap[dayOfWeekStr] ?? 0
+    const dayName = dayNames[dayOfWeek]
     
     // Показываем только будущие дни или сегодня (не прошедшие дни)
-    if (date >= today) {
+    if (dateStr >= todayStr) {
       result.push({
-        name: days[i],
+        name: dayName,
         date: dateStr
       })
     }
@@ -505,37 +600,43 @@ function nextWeek() {
 
 async function loadWeekShowtimes() {
   try {
-    const startDate = currentWeekStart.value.toISOString().split('T')[0]
-    const endDate = new Date(currentWeekStart.value)
-    endDate.setDate(endDate.getDate() + 6)
-    const endDateStr = endDate.toISOString().split('T')[0]
+    // Получаем даты начала и конца недели в часовом поясе Екатеринбурга
+    const startDate = new Date(currentWeekStart.value)
+    startDate.setHours(12, 0, 0, 0)
+    const startDateStr = startDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Yekaterinburg' })
     
-    // Загружаем сеансы за всю неделю
-    const allShowtimes: any[] = []
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(currentWeekStart.value)
-      date.setDate(currentWeekStart.value.getDate() + i)
-      const dateStr = date.toISOString().split('T')[0]
-      const dayShowtimes = await getShowtimes({ date: dateStr })
-      allShowtimes.push(...dayShowtimes)
-    }
+    const endDate = new Date(currentWeekStart.value)
+    endDate.setDate(currentWeekStart.value.getDate() + 6)
+    endDate.setHours(12, 0, 0, 0)
+    const endDateStr = endDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Yekaterinburg' })
+    
+    // Загружаем все сеансы за неделю одним запросом (оптимизация)
+    const allShowtimes = await getShowtimes({ startDate: startDateStr, endDate: endDateStr })
     
     weekShowtimes.value = allShowtimes
   } catch (error) {
     console.error('Error loading week showtimes:', error)
+    weekShowtimes.value = []
   }
 }
 
 function getShowtimesForCell(date: string, hallId: number) {
   return weekShowtimes.value.filter(s => {
-    const showtimeDate = s.startAt.split('T')[0]
-    return showtimeDate === date && s.hallId === hallId && !s.isHidden
+    // Получаем дату сеанса в часовом поясе Екатеринбурга
+    const showtimeDateObj = new Date(s.startAt)
+    const showtimeDateStr = showtimeDateObj.toLocaleDateString('en-CA', { timeZone: 'Asia/Yekaterinburg' })
+    
+    return showtimeDateStr === date && s.hallId === hallId && !s.isHidden
   }).sort((a, b) => a.startAt.localeCompare(b.startAt))
 }
 
 function formatTime(isoString: string): string {
   const date = new Date(isoString)
-  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  return date.toLocaleTimeString('ru-RU', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    timeZone: 'Asia/Yekaterinburg'
+  })
 }
 
 const scheduleCellDate = ref<string>('')
@@ -881,7 +982,82 @@ function getFilmTitle(filmId: number) {
 }
 
 function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString('ru-RU')
+  return new Date(iso).toLocaleString('ru-RU', {
+    timeZone: 'Asia/Yekaterinburg'
+  })
+}
+
+async function loadPrices() {
+  try {
+    const prices = await getPrices()
+    pricesList.value = [...prices]
+    availablePrices.value = [...prices]
+    pricesChanged.value = false
+    pricesError.value = ''
+    pricesSuccess.value = ''
+  } catch (err: any) {
+    // Если API недоступен, используем значения по умолчанию
+    const defaultPrices = [250, 300, 350, 400, 500]
+    pricesList.value = [...defaultPrices]
+    availablePrices.value = [...defaultPrices]
+    pricesError.value = err.response?.data?.error || 'Ошибка загрузки цен. Используются значения по умолчанию.'
+  }
+}
+
+async function savePrices() {
+  if (!pricesChanged.value) {
+    pricesSuccess.value = 'Нет изменений для сохранения'
+    setTimeout(() => { pricesSuccess.value = '' }, 2000)
+    return
+  }
+
+  pricesSaving.value = true
+  pricesError.value = ''
+  pricesSuccess.value = ''
+  
+  try {
+    // Валидация
+    if (pricesList.value.length === 0) {
+      pricesError.value = 'Добавьте хотя бы одну цену'
+      pricesSaving.value = false
+      return
+    }
+
+    if (!pricesList.value.every(p => typeof p === 'number' && p > 0)) {
+      pricesError.value = 'Все цены должны быть положительными числами'
+      pricesSaving.value = false
+      return
+    }
+
+    const savedPrices = await updatePrices(pricesList.value)
+    pricesList.value = [...savedPrices]
+    availablePrices.value = [...savedPrices]
+    pricesChanged.value = false
+    pricesSuccess.value = 'Цены успешно сохранены!'
+    setTimeout(() => { pricesSuccess.value = '' }, 3000)
+  } catch (err: any) {
+    pricesError.value = err.response?.data?.error || err.response?.data?.message || 'Ошибка сохранения цен'
+  } finally {
+    pricesSaving.value = false
+  }
+}
+
+function addPrice() {
+  const lastPrice = pricesList.value.length > 0 
+    ? pricesList.value[pricesList.value.length - 1] 
+    : 500
+  pricesList.value.push(lastPrice + 50)
+  pricesChanged.value = true
+}
+
+function removePrice(index: number) {
+  if (pricesList.value.length <= 1) {
+    pricesError.value = 'Должна остаться хотя бы одна цена'
+    setTimeout(() => { pricesError.value = '' }, 2000)
+    return
+  }
+  pricesList.value.splice(index, 1)
+  pricesChanged.value = true
 }
 
 onMounted(async () => {
@@ -890,14 +1066,9 @@ onMounted(async () => {
   await loadShowtimes()
   await loadHalls()
   await loadWeekShowtimes()
+  await loadPrices()
 })
 
-// Загружаем расписание недели при переключении на вкладку
-watch(activeTab, (newTab) => {
-  if (newTab === 'schedule') {
-    loadWeekShowtimes()
-  }
-})
 </script>
 
 <style scoped>
@@ -1418,6 +1589,22 @@ watch(activeTab, (newTab) => {
   padding: 12px;
   background: #ffebee;
   border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.success-message {
+  color: #2e7d32;
+  font-size: 14px;
+  padding: 12px;
+  background: #e8f5e9;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.prices-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }
 
 .modal-actions {

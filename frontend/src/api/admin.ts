@@ -53,7 +53,7 @@ export async function deleteFilm(id: number) {
   await api.delete(`/admin/films/${id}`)
 }
 
-export async function getShowtimes(params?: { date?: string; hallId?: number }) {
+export async function getShowtimes(params?: { date?: string; hallId?: number; startDate?: string; endDate?: string }) {
   const response = await api.get('/admin/showtimes', { params })
   return response.data.showtimes
 }
@@ -80,4 +80,14 @@ export async function getHalls() {
 export async function updateHall(id: number, hall: Partial<Hall>) {
   const response = await api.put(`/admin/halls/${id}`, hall)
   return response.data.hall
+}
+
+export async function getPrices() {
+  const response = await api.get('/admin/prices')
+  return response.data.prices
+}
+
+export async function updatePrices(prices: number[]) {
+  const response = await api.put('/admin/prices', { prices })
+  return response.data.prices
 }

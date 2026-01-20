@@ -41,18 +41,26 @@
                   <span class="meta-chip age">{{ film.ageRating }}</span>
                   <span v-if="film.format" class="meta-chip format">{{ film.format }}</span>
                   <span 
-                    v-if="getNextShowtimePrice(film)" 
-                    class="meta-chip price"
-                    :class="{ 'price-blinking': hasUpcomingShowtime(film) }"
+                    v-if="hasFutureShowtimes(film)" 
+                    class="meta-chip future"
                   >
-                    {{ getNextShowtimePrice(film) }}
+                    Завтра
                   </span>
-                  <span 
-                    v-else-if="getPriceRange(film)" 
-                    class="meta-chip price"
-                  >
-                    {{ getPriceRange(film) }}
-                  </span>
+                  <template v-else>
+                    <span 
+                      v-if="getNextShowtimePrice(film)" 
+                      class="meta-chip price"
+                      :class="{ 'price-blinking': hasUpcomingShowtime(film) }"
+                    >
+                      {{ getNextShowtimePrice(film) }}
+                    </span>
+                    <span 
+                      v-else-if="getPriceRange(film)" 
+                      class="meta-chip price"
+                    >
+                      {{ getPriceRange(film) }}
+                    </span>
+                  </template>
                 </div>
 
                 <!-- Времена сеансов чипами -->
@@ -70,7 +78,7 @@
                     {{ getShowtimeDisplay(showtime, film.showtimes) }}
                   </div>
                   <div v-if="getActiveShowtimes(film.showtimes).length === 0" class="no-showtimes">
-                    Нет сеансов
+                    {{ getNoShowtimesMessage(film) }}
                   </div>
                 </div>
               </div>
@@ -87,8 +95,24 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { getBoard, type BoardResponse, type BoardFilm, type BoardShowtime } from '../api/board'
 
 const containerRef = ref<HTMLElement>()
+// Получаем текущую дату в часовом поясе Екатеринбурга
+function getCurrentDateInYekaterinburg(): string {
+  const now = new Date()
+  const formatter = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Asia/Yekaterinburg',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  })
+  const parts = formatter.formatToParts(now)
+  const year = parts.find(p => p.type === 'year')?.value
+  const month = parts.find(p => p.type === 'month')?.value
+  const day = parts.find(p => p.type === 'day')?.value
+  return `${year}-${month}-${day}`
+}
+
 const boardData = ref<BoardResponse>({
-  date: new Date().toISOString().split('T')[0],
+  date: getCurrentDateInYekaterinburg(),
   films: []
 })
 
@@ -133,18 +157,23 @@ function updateTime() {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false
+    hour12: false,
+    timeZone: 'Asia/Yekaterinburg'
   })
   currentDate.value = now.toLocaleDateString('ru-RU', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: 'Asia/Yekaterinburg'
   })
 }
 
 function isActive(showtime: BoardShowtime): boolean {
+  // Игнорируем скрытые сеансы
+  if (showtime.isHidden) return false
   const now = new Date()
+  // Конвертируем время сеанса в локальное время Екатеринбурга для сравнения
   const start = new Date(showtime.startAt)
   const end = new Date(showtime.endAt)
   return now >= start && now <= end
@@ -157,7 +186,7 @@ function isNext(showtime: BoardShowtime, allShowtimes: BoardShowtime[]): boolean
   if (showtimeStart <= now) return false
   
   const futureShowtimes = allShowtimes
-    .filter(s => new Date(s.startAt) > now)
+    .filter(s => !s.isHidden && new Date(s.startAt) > now)
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
   
   return futureShowtimes.length > 0 && futureShowtimes[0].id === showtime.id
@@ -166,15 +195,69 @@ function isNext(showtime: BoardShowtime, allShowtimes: BoardShowtime[]): boolean
 function isUpcoming(showtime: BoardShowtime): boolean {
   const now = new Date()
   const showtimeStart = new Date(showtime.startAt)
-  return showtimeStart > now
+  
+  // Игнорируем скрытые сеансы
+  if (showtime.isHidden) return false
+  
+  // Если сеанс уже прошел или идет сейчас, не показываем как предстоящий
+  if (showtimeStart <= now) return false
+  
+  // Находим самый ближайший сеанс среди всех фильмов (игнорируем скрытые)
+  const allFutureShowtimes = boardData.value.films
+    .flatMap(f => f.showtimes)
+    .filter(s => !s.isHidden && new Date(s.startAt) > now)
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+  
+  // Если это самый ближайший сеанс, не применяем класс upcoming (он будет chip-next)
+  if (allFutureShowtimes.length > 0 && allFutureShowtimes[0].id === showtime.id) {
+    return false
+  }
+  
+  // Все остальные предстоящие сеансы - голубые
+  return true
 }
 
 function getActiveShowtimes(showtimes: BoardShowtime[]): BoardShowtime[] {
   const now = new Date()
   return showtimes.filter(showtime => {
+    // Игнорируем скрытые сеансы
+    if (showtime.isHidden) return false
     const endAt = new Date(showtime.endAt)
     return endAt > now // Показываем только сеансы, которые еще не закончились
   })
+}
+
+function getNoShowtimesMessage(film: BoardFilm): string {
+  // Получаем текущую дату в часовом поясе Екатеринбурга
+  const todayStr = getCurrentDateInYekaterinburg()
+  
+  // Вычисляем завтрашнюю дату
+  const todayParts = todayStr.split('-')
+  const todayDate = new Date(parseInt(todayParts[0]), parseInt(todayParts[1]) - 1, parseInt(todayParts[2]))
+  const tomorrowDate = new Date(todayDate)
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+  const tomorrowStr = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`
+  
+  // Проверяем все сеансы фильма (игнорируем скрытые)
+  const visibleShowtimes = film.showtimes.filter(showtime => !showtime.isHidden)
+  
+  if (visibleShowtimes.length === 0) {
+    return 'Нет сеансов'
+  }
+  
+  // Просто проверяем, есть ли сеансы завтра или позже по дате начала (сравниваем строки дат)
+  const futureShowtimes = visibleShowtimes.filter(showtime => {
+    const startAt = new Date(showtime.startAt)
+    // Получаем дату сеанса в формате YYYY-MM-DD для сравнения
+    const showtimeDateStr = `${startAt.getFullYear()}-${String(startAt.getMonth() + 1).padStart(2, '0')}-${String(startAt.getDate()).padStart(2, '0')}`
+    return showtimeDateStr >= tomorrowStr
+  })
+  
+  if (futureShowtimes.length > 0) {
+    return 'завтра'
+  }
+  
+  return 'Нет сеансов'
 }
 
 function getShowtimeDisplay(showtime: BoardShowtime, allShowtimes: BoardShowtime[]): string {
@@ -195,8 +278,9 @@ function getShowtimeDisplay(showtime: BoardShowtime, allShowtimes: BoardShowtime
   
   // Если сеанс завтра
   if (showtimeDate.getTime() === tomorrow.getTime()) {
-    // Проверяем, есть ли сегодня еще сеансы
+    // Проверяем, есть ли сегодня еще сеансы (игнорируем скрытые)
     const todayShowtimes = allShowtimes.filter(s => {
+      if (s.isHidden) return false
       const sDate = new Date(s.startAt)
       const sDateOnly = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate())
       return sDateOnly.getTime() === today.getTime() && new Date(s.startAt) > now
@@ -211,6 +295,7 @@ function getShowtimeDisplay(showtime: BoardShowtime, allShowtimes: BoardShowtime
   // Если сеанс не сегодня и не завтра, но в будущем
   if (showtimeDate.getTime() > today.getTime()) {
     const todayShowtimes = allShowtimes.filter(s => {
+      if (s.isHidden) return false
       const sDate = new Date(s.startAt)
       const sDateOnly = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate())
       return sDateOnly.getTime() === today.getTime() && new Date(s.startAt) > now
@@ -226,20 +311,20 @@ function getShowtimeDisplay(showtime: BoardShowtime, allShowtimes: BoardShowtime
 }
 
 function hasActiveShowtime(film: BoardFilm): boolean {
-  return film.showtimes.some(s => isActive(s))
+  return film.showtimes.some(s => !s.isHidden && isActive(s))
 }
 
 function hasNextShowtime(film: BoardFilm): boolean {
   const now = new Date()
   const futureShowtimes = film.showtimes
-    .filter(s => new Date(s.startAt) > now)
+    .filter(s => !s.isHidden && new Date(s.startAt) > now)
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
   
   if (futureShowtimes.length === 0) return false
   
   const allFutureShowtimes = boardData.value.films
     .flatMap(f => f.showtimes)
-    .filter(s => new Date(s.startAt) > now)
+    .filter(s => !s.isHidden && new Date(s.startAt) > now)
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
   
   return allFutureShowtimes.length > 0 && allFutureShowtimes[0].id === futureShowtimes[0].id
@@ -247,6 +332,7 @@ function hasNextShowtime(film: BoardFilm): boolean {
 
 function getPriceRange(film: BoardFilm): string | null {
   const prices = film.showtimes
+    .filter(s => !s.isHidden)
     .map(s => s.priceFrom)
     .filter((price): price is number => price !== null && price !== undefined)
   
@@ -264,13 +350,44 @@ function getPriceRange(film: BoardFilm): string | null {
 
 function hasUpcomingShowtime(film: BoardFilm): boolean {
   const now = new Date()
-  return film.showtimes.some(s => new Date(s.startAt) > now)
+  
+  // Находим самый ближайший сеанс среди всех фильмов (игнорируем скрытые)
+  const allFutureShowtimes = boardData.value.films
+    .flatMap(f => f.showtimes)
+    .filter(s => !s.isHidden && new Date(s.startAt) > now)
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+  
+  if (allFutureShowtimes.length === 0) return false
+  
+  // Проверяем, есть ли у этого фильма самый ближайший сеанс
+  const nextShowtime = allFutureShowtimes[0]
+  return film.showtimes.some(s => !s.isHidden && s.id === nextShowtime.id)
+}
+
+function hasFutureShowtimes(film: BoardFilm): boolean {
+  // Получаем текущую дату в часовом поясе Екатеринбурга
+  const todayStr = getCurrentDateInYekaterinburg()
+  const todayParts = todayStr.split('-')
+  const todayDate = new Date(parseInt(todayParts[0]), parseInt(todayParts[1]) - 1, parseInt(todayParts[2]))
+  const tomorrowDate = new Date(todayDate)
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+  const tomorrowStr = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`
+  
+  // Проверяем, есть ли сеансы завтра или позже
+  const futureShowtimes = film.showtimes.filter(showtime => {
+    if (showtime.isHidden) return false
+    const startAt = new Date(showtime.startAt)
+    const showtimeDateStr = `${startAt.getFullYear()}-${String(startAt.getMonth() + 1).padStart(2, '0')}-${String(startAt.getDate()).padStart(2, '0')}`
+    return showtimeDateStr >= tomorrowStr
+  })
+  
+  return futureShowtimes.length > 0
 }
 
 function getNextShowtimePrice(film: BoardFilm): string | null {
   const now = new Date()
   const futureShowtimes = film.showtimes
-    .filter(s => new Date(s.startAt) > now)
+    .filter(s => !s.isHidden && new Date(s.startAt) > now)
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
   
   if (futureShowtimes.length === 0) return null
@@ -530,6 +647,13 @@ onUnmounted(() => {
   box-shadow: 0 0 20px rgba(255, 193, 7, 0.6);
 }
 
+.meta-chip.future {
+  background: rgba(0, 212, 255, 0.3);
+  color: #00d4ff;
+  border: 2px solid #00d4ff;
+  font-weight: 700;
+}
+
 @keyframes priceBlink {
   0%, 100% {
     opacity: 1;
@@ -570,27 +694,27 @@ onUnmounted(() => {
 }
 
 .showtime-chip.chip-active {
-  background: rgba(0, 212, 255, 0.3);
-  border-color: #00d4ff;
-  color: #00d4ff;
-  box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+  background: rgba(128, 128, 128, 0.3);
+  border-color: #808080;
+  color: #c0c0c0;
+  box-shadow: 0 0 15px rgba(128, 128, 128, 0.4);
   font-weight: bold;
 }
 
 .showtime-chip.chip-next {
-  background: rgba(255, 193, 7, 0.3);
-  border-color: #ffc107;
-  color: #ffc107;
-  box-shadow: 0 0 15px rgba(255, 193, 7, 0.3);
-  font-weight: bold;
-}
-
-.showtime-chip.chip-upcoming {
   animation: showtimeBlink 1.5s ease-in-out infinite;
   background: rgba(255, 193, 7, 0.4);
   border-color: #ffc107;
   color: #ffc107;
   box-shadow: 0 0 20px rgba(255, 193, 7, 0.6);
+  font-weight: bold;
+}
+
+.showtime-chip.chip-upcoming {
+  background: rgba(0, 212, 255, 0.3);
+  border-color: #00d4ff;
+  color: #00d4ff;
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.3);
   font-weight: bold;
 }
 

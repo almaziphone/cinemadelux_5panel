@@ -14,6 +14,7 @@ export interface BoardShowtime {
   hallName: string
   priceFrom: number | null
   note: string | null
+  isHidden?: boolean
 }
 
 export interface BoardFilm {
