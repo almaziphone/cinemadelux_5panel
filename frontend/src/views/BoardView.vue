@@ -40,7 +40,19 @@
                 <div class="film-meta">
                   <span class="meta-chip age">{{ film.ageRating }}</span>
                   <span v-if="film.format" class="meta-chip format">{{ film.format }}</span>
-                  <span v-if="getPriceRange(film)" class="meta-chip price">{{ getPriceRange(film) }}</span>
+                  <span 
+                    v-if="getNextShowtimePrice(film)" 
+                    class="meta-chip price"
+                    :class="{ 'price-blinking': hasUpcomingShowtime(film) }"
+                  >
+                    {{ getNextShowtimePrice(film) }}
+                  </span>
+                  <span 
+                    v-else-if="getPriceRange(film)" 
+                    class="meta-chip price"
+                  >
+                    {{ getPriceRange(film) }}
+                  </span>
                 </div>
 
                 <!-- Времена сеансов чипами -->
@@ -51,10 +63,11 @@
                     class="showtime-chip"
                     :class="{
                       'chip-active': isActive(showtime),
-                      'chip-next': isNext(showtime, film.showtimes)
+                      'chip-next': isNext(showtime, film.showtimes),
+                      'chip-upcoming': isUpcoming(showtime)
                     }"
                   >
-                    {{ showtime.time }}
+                    {{ getShowtimeDisplay(showtime, film.showtimes) }}
                   </div>
                   <div v-if="film.showtimes.length === 0" class="no-showtimes">
                     Нет сеансов
@@ -150,6 +163,60 @@ function isNext(showtime: BoardShowtime, allShowtimes: BoardShowtime[]): boolean
   return futureShowtimes.length > 0 && futureShowtimes[0].id === showtime.id
 }
 
+function isUpcoming(showtime: BoardShowtime): boolean {
+  const now = new Date()
+  const showtimeStart = new Date(showtime.startAt)
+  return showtimeStart > now
+}
+
+function getShowtimeDisplay(showtime: BoardShowtime, allShowtimes: BoardShowtime[]): string {
+  const now = new Date()
+  const showtimeStart = new Date(showtime.startAt)
+  
+  // Если сеанс уже прошел, не показываем его
+  if (showtimeStart <= now) {
+    return showtime.time
+  }
+  
+  // Проверяем, есть ли сегодня еще сеансы после текущего времени
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  
+  const showtimeDate = new Date(showtimeStart.getFullYear(), showtimeStart.getMonth(), showtimeStart.getDate())
+  
+  // Если сеанс завтра
+  if (showtimeDate.getTime() === tomorrow.getTime()) {
+    // Проверяем, есть ли сегодня еще сеансы
+    const todayShowtimes = allShowtimes.filter(s => {
+      const sDate = new Date(s.startAt)
+      const sDateOnly = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate())
+      return sDateOnly.getTime() === today.getTime() && new Date(s.startAt) > now
+    })
+    
+    // Если сегодняшних сеансов нет, показываем "завтра"
+    if (todayShowtimes.length === 0) {
+      return 'завтра'
+    }
+  }
+  
+  // Если сеанс не сегодня и не завтра, но в будущем
+  if (showtimeDate.getTime() > today.getTime()) {
+    const todayShowtimes = allShowtimes.filter(s => {
+      const sDate = new Date(s.startAt)
+      const sDateOnly = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate())
+      return sDateOnly.getTime() === today.getTime() && new Date(s.startAt) > now
+    })
+    
+    // Если сегодняшних сеансов нет, показываем "завтра"
+    if (todayShowtimes.length === 0) {
+      return 'завтра'
+    }
+  }
+  
+  return showtime.time
+}
+
 function hasActiveShowtime(film: BoardFilm): boolean {
   return film.showtimes.some(s => isActive(s))
 }
@@ -181,10 +248,32 @@ function getPriceRange(film: BoardFilm): string | null {
   const maxPrice = Math.max(...prices)
   
   if (minPrice === maxPrice) {
-    return `${minPrice} ₽`
+    return `${minPrice} руб.`
   } else {
-    return `от ${minPrice} до ${maxPrice} ₽`
+    return `от ${minPrice} до ${maxPrice} руб.`
   }
+}
+
+function hasUpcomingShowtime(film: BoardFilm): boolean {
+  const now = new Date()
+  return film.showtimes.some(s => new Date(s.startAt) > now)
+}
+
+function getNextShowtimePrice(film: BoardFilm): string | null {
+  const now = new Date()
+  const futureShowtimes = film.showtimes
+    .filter(s => new Date(s.startAt) > now)
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+  
+  if (futureShowtimes.length === 0) return null
+  
+  const nextShowtime = futureShowtimes[0]
+  
+  if (nextShowtime.priceFrom === null || nextShowtime.priceFrom === undefined) {
+    return null
+  }
+  
+  return `${nextShowtime.priceFrom} руб.`
 }
 
 async function loadBoard() {
@@ -425,6 +514,25 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
+.meta-chip.price.price-blinking {
+  animation: priceBlink 1.5s ease-in-out infinite;
+  background: rgba(255, 193, 7, 0.4);
+  color: #ffc107;
+  border: 2px solid #ffc107;
+  box-shadow: 0 0 20px rgba(255, 193, 7, 0.6);
+}
+
+@keyframes priceBlink {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.05);
+  }
+}
+
 .showtimes-chips {
   display: flex;
   flex-direction: row;
@@ -467,6 +575,26 @@ onUnmounted(() => {
   color: #ffc107;
   box-shadow: 0 0 15px rgba(255, 193, 7, 0.3);
   font-weight: bold;
+}
+
+.showtime-chip.chip-upcoming {
+  animation: showtimeBlink 1.5s ease-in-out infinite;
+  background: rgba(255, 193, 7, 0.4);
+  border-color: #ffc107;
+  color: #ffc107;
+  box-shadow: 0 0 20px rgba(255, 193, 7, 0.6);
+  font-weight: bold;
+}
+
+@keyframes showtimeBlink {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.05);
+  }
 }
 
 .no-showtimes {
