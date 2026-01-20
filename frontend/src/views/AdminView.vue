@@ -82,35 +82,38 @@
           </div>
           <button @click="openShowtimeModal()" class="add-button">+ Добавить сеанс</button>
         </div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Зал</th>
-              <th>Фильм</th>
-              <th>Начало</th>
-              <th>Окончание</th>
-              <th>Цена от</th>
-              <th>Скрыт</th>
-              <th>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="showtime in showtimes" :key="showtime.id">
-              <td>{{ showtime.id }}</td>
-              <td>{{ getHallName(showtime.hallId) }}</td>
-              <td>{{ getFilmTitle(showtime.filmId) }}</td>
-              <td>{{ formatDateTime(showtime.startAt) }}</td>
-              <td>{{ formatDateTime(showtime.endAt) }}</td>
-              <td>{{ showtime.priceFrom || '-' }}</td>
-              <td>{{ showtime.isHidden ? 'Да' : 'Нет' }}</td>
-              <td>
-                <button @click="openShowtimeModal(showtime)" class="edit-button">Редактировать</button>
-                <button @click="deleteShowtimeHandler(showtime.id!)" class="delete-button">Удалить</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Зал</th>
+                <th>Фильм</th>
+                <th>Начало</th>
+                <th>Окончание</th>
+                <th>Цена от</th>
+                <th>Скрыт</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="showtime in showtimes" :key="showtime.id">
+                <td>{{ showtime.id }}</td>
+                <td>{{ getHallName(showtime.hallId) }}</td>
+                <td>{{ getFilmTitle(showtime.filmId) }}</td>
+                <td>{{ formatDateTime(showtime.startAt) }}</td>
+                <td>{{ formatDateTime(showtime.endAt) }}</td>
+                <td>{{ showtime.priceFrom || '-' }}</td>
+                <td>{{ showtime.isHidden ? 'Да' : 'Нет' }}</td>
+                <td>
+                  <button @click="openShowtimeModal(showtime)" class="edit-button">Редактировать</button>
+                  <button @click="copyShowtime(showtime)" class="copy-button">Копировать</button>
+                  <button @click="deleteShowtimeHandler(showtime.id!)" class="delete-button">Удалить</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Расписание недели -->
@@ -315,7 +318,7 @@
     <!-- Модальное окно сеанса -->
     <div v-if="showtimeModalOpen" class="modal-overlay" @click.self="closeShowtimeModal">
       <div class="modal">
-        <h3>{{ editingShowtime?.id ? 'Редактировать сеанс' : 'Добавить сеанс' }}</h3>
+        <h3>{{ isCopyingShowtime ? 'Копировать сеанс' : editingShowtime?.id ? 'Редактировать сеанс' : 'Добавить сеанс' }}</h3>
         <form @submit.prevent="saveShowtime" class="modal-form">
           <div class="form-group">
             <label>Зал *</label>
@@ -344,7 +347,18 @@
           </div>
           <div class="form-group">
             <label>Цена от (₽)</label>
-            <input v-model.number="showtimeForm.priceFrom" type="number" min="0" />
+            <input 
+              v-model.number="showtimeForm.priceFrom" 
+              type="number" 
+              min="0" 
+              list="price-list"
+              placeholder="Выберите или введите сумму"
+            />
+            <datalist id="price-list">
+              <option v-for="price in availablePrices" :key="price" :value="price">
+                {{ price }} ₽
+              </option>
+            </datalist>
           </div>
           <div class="form-group">
             <label>Примечание</label>
@@ -387,9 +401,13 @@ import {
   type Hall
 } from '../api/admin'
 import { getFilmById, type KinopoiskFilm } from '../api/kinopoisk'
+import pricesData from '../data/prices.json'
 
 const router = useRouter()
 const user = ref<any>(null)
+
+// Доступные суммы из JSON файла
+const availablePrices = ref<number[]>(pricesData.prices)
 
 const activeTab = ref<'films' | 'showtimes' | 'schedule' | 'halls'>('films')
 const tabs = ['films', 'showtimes', 'schedule', 'halls'] as const
@@ -585,6 +603,7 @@ const canLoadFilm = computed(() => {
 
 const showtimeModalOpen = ref(false)
 const editingShowtime = ref<Showtime | null>(null)
+const isCopyingShowtime = ref(false)
 const showtimeForm = ref<Partial<Showtime>>({
   hallId: 1,
   filmId: 0,
@@ -751,6 +770,7 @@ async function deleteFilmHandler(id: number) {
 
 function openShowtimeModal(showtime?: Showtime) {
   editingShowtime.value = showtime || null
+  isCopyingShowtime.value = false
   if (showtime) {
     // Конвертируем ISO datetime в datetime-local формат
     const startDate = new Date(showtime.startAt)
@@ -781,9 +801,32 @@ function openShowtimeModal(showtime?: Showtime) {
   showtimeModalOpen.value = true
 }
 
+function copyShowtime(showtime: Showtime) {
+  // Копируем сеанс, но без id, чтобы создать новый
+  editingShowtime.value = null
+  isCopyingShowtime.value = true
+  // Конвертируем ISO datetime в datetime-local формат
+  const startDate = new Date(showtime.startAt)
+  const localDateTime = new Date(startDate.getTime() - startDate.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16)
+  
+  showtimeForm.value = {
+    hallId: showtime.hallId,
+    filmId: showtime.filmId,
+    startAt: localDateTime,
+    priceFrom: showtime.priceFrom,
+    note: showtime.note,
+    isHidden: showtime.isHidden
+  }
+  showtimeError.value = ''
+  showtimeModalOpen.value = true
+}
+
 function closeShowtimeModal() {
   showtimeModalOpen.value = false
   editingShowtime.value = null
+  isCopyingShowtime.value = false
   showtimeError.value = ''
 }
 
@@ -991,10 +1034,19 @@ watch(activeTab, (newTab) => {
   background: #45a049;
 }
 
+.table-container {
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+  overflow-x: auto;
+  margin-top: 20px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 20px;
+  margin-top: 0;
 }
 
 .data-table th,
@@ -1008,6 +1060,9 @@ watch(activeTab, (newTab) => {
   background: #f5f5f5;
   font-weight: 600;
   color: #333;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .data-table tr:hover {
@@ -1196,6 +1251,7 @@ watch(activeTab, (newTab) => {
 }
 
 .edit-button,
+.copy-button,
 .delete-button {
   padding: 6px 12px;
   margin-right: 8px;
@@ -1212,6 +1268,15 @@ watch(activeTab, (newTab) => {
 
 .edit-button:hover {
   background: #1976d2;
+}
+
+.copy-button {
+  background: #ff9800;
+  color: white;
+}
+
+.copy-button:hover {
+  background: #f57c00;
 }
 
 .delete-button {

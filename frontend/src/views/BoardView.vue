@@ -58,7 +58,7 @@
                 <!-- Времена сеансов чипами -->
                 <div class="showtimes-chips">
                   <div
-                    v-for="showtime in film.showtimes"
+                    v-for="showtime in getActiveShowtimes(film.showtimes)"
                     :key="showtime.id"
                     class="showtime-chip"
                     :class="{
@@ -69,7 +69,7 @@
                   >
                     {{ getShowtimeDisplay(showtime, film.showtimes) }}
                   </div>
-                  <div v-if="film.showtimes.length === 0" class="no-showtimes">
+                  <div v-if="getActiveShowtimes(film.showtimes).length === 0" class="no-showtimes">
                     Нет сеансов
                   </div>
                 </div>
@@ -167,6 +167,14 @@ function isUpcoming(showtime: BoardShowtime): boolean {
   const now = new Date()
   const showtimeStart = new Date(showtime.startAt)
   return showtimeStart > now
+}
+
+function getActiveShowtimes(showtimes: BoardShowtime[]): BoardShowtime[] {
+  const now = new Date()
+  return showtimes.filter(showtime => {
+    const endAt = new Date(showtime.endAt)
+    return endAt > now // Показываем только сеансы, которые еще не закончились
+  })
 }
 
 function getShowtimeDisplay(showtime: BoardShowtime, allShowtimes: BoardShowtime[]): string {
