@@ -190,7 +190,7 @@ onUnmounted(() => {
 .films-showcase {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, auto);
   grid-auto-rows: 1fr;
   gap: 30px;
   padding: 60px 40px;
@@ -201,6 +201,7 @@ onUnmounted(() => {
 
 .film-card {
   width: 100%;
+  max-width: 900px;
   height: 100%;
   background: rgba(255, 255, 255, 0.05);
   border: 3px solid rgba(255, 255, 255, 0.15);
