@@ -46,33 +46,35 @@
                 
                 <!-- Мета-информация: возраст, формат и цена -->
                 <div class="film-meta">
-                  <span class="meta-chip age">{{ film.ageRating }}</span>
-                  <span v-if="film.format" class="meta-chip format">{{ film.format }}</span>
-                  <span 
+                  <div class="film-meta-row">
+                    <span class="meta-chip age">{{ film.ageRating }}</span>
+                    <span v-if="film.format" class="meta-chip format">{{ film.format }}</span>
+                    <template v-if="!hasFutureShowtimes(film)">
+                      <span 
+                        v-if="getNextShowtimePrice(film)" 
+                        class="meta-chip price"
+                        :class="{ 'price-blinking': hasUpcomingShowtime(film) }"
+                      >
+                        {{ getNextShowtimePrice(film) }}
+                      </span>
+                      <span 
+                        v-else-if="getPriceRange(film)" 
+                        class="meta-chip price"
+                      >
+                        {{ getPriceRange(film) }}
+                      </span>
+                    </template>
+                  </div>
+                  <div 
                     v-if="hasFutureShowtimes(film)" 
-                    class="meta-chip future"
+                    class="future-text"
                   >
                     Завтра
-                  </span>
-                  <template v-else>
-                    <span 
-                      v-if="getNextShowtimePrice(film)" 
-                      class="meta-chip price"
-                      :class="{ 'price-blinking': hasUpcomingShowtime(film) }"
-                    >
-                      {{ getNextShowtimePrice(film) }}
-                    </span>
-                    <span 
-                      v-else-if="getPriceRange(film)" 
-                      class="meta-chip price"
-                    >
-                      {{ getPriceRange(film) }}
-                    </span>
-                  </template>
+                  </div>
                 </div>
 
                 <!-- Времена сеансов чипами -->
-                <div class="showtimes-chips">
+                <div class="showtimes-chips" v-if="!hasFutureShowtimes(film)">
                   <div
                     v-for="showtime in getActiveShowtimes(film.showtimes)"
                     :key="showtime.id"
@@ -689,9 +691,15 @@ onUnmounted(() => {
 
 .film-meta {
   display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin: 0 0 30px 0;
+}
+
+.film-meta-row {
+  display: flex;
   flex-direction: row;
   gap: 15px;
-  margin: 0 0 30px 0;
   flex-wrap: wrap;
 }
 
@@ -731,11 +739,13 @@ onUnmounted(() => {
   box-shadow: 0 0 20px rgba(255, 193, 7, 0.6);
 }
 
-.meta-chip.future {
-  background: rgba(0, 212, 255, 0.3);
+.future-text {
   color: #00d4ff;
-  border: 2px solid #00d4ff;
+  font-size: 72px;
   font-weight: 700;
+  text-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
+  letter-spacing: 2px;
+  margin-top: 10px;
 }
 
 @keyframes priceBlink {
