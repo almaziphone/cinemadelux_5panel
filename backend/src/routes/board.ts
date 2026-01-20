@@ -3,10 +3,27 @@ import { db } from '../db';
 import { BoardResponse, BoardFilm, BoardShowtime, Premier } from '../types';
 
 export async function boardRoutes(fastify: FastifyInstance) {
+  // Функция для получения текущей даты в часовом поясе Екатеринбурга
+  function getCurrentDateInYekaterinburg(): string {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Yekaterinburg',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const parts = formatter.formatToParts(now);
+    const year = parts.find(p => p.type === 'year')?.value;
+    const month = parts.find(p => p.type === 'month')?.value;
+    const day = parts.find(p => p.type === 'day')?.value;
+    return `${year}-${month}-${day}`;
+  }
+
   fastify.get('/api/board', async (request) => {
     const { date } = request.query as { date?: string };
     
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    // Используем переданную дату или текущую дату в часовом поясе Екатеринбурга
+    const targetDate = date || getCurrentDateInYekaterinburg();
     
     // Получаем все залы для маппинга
     const halls = db.prepare('SELECT * FROM halls').all() as Array<{
@@ -15,14 +32,36 @@ export async function boardRoutes(fastify: FastifyInstance) {
     }>;
     const hallMap = new Map(halls.map(h => [h.id, h.name]));
     
-    // Вычисляем дату завтра для получения сеансов на сегодня и завтра
-    const targetDateObj = new Date(targetDate + 'T00:00:00');
-    const tomorrowDateObj = new Date(targetDateObj);
-    tomorrowDateObj.setDate(tomorrowDateObj.getDate() + 1);
-    const tomorrowDate = tomorrowDateObj.toISOString().split('T')[0];
+    // Вычисляем дату завтра в часовом поясе Екатеринбурга
+    // Парсим targetDate и добавляем один день
+    const targetDateParts = targetDate.split('-');
+    const targetYear = parseInt(targetDateParts[0]);
+    const targetMonth = parseInt(targetDateParts[1]) - 1; // месяц начинается с 0
+    const targetDay = parseInt(targetDateParts[2]);
     
-    // Получаем сеансы на указанную дату и завтра (только активные фильмы и не скрытые сеансы)
-    const showtimes = db.prepare(`
+    // Создаем дату в UTC, но используем полдень для надежности
+    const targetDateObj = new Date(Date.UTC(targetYear, targetMonth, targetDay, 12, 0, 0));
+    const tomorrowDateObj = new Date(targetDateObj);
+    tomorrowDateObj.setUTCDate(tomorrowDateObj.getUTCDate() + 1);
+    
+    // Конвертируем обратно в часовой пояс Екатеринбурга
+    const tomorrowFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Yekaterinburg',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const tomorrowParts = tomorrowFormatter.formatToParts(tomorrowDateObj);
+    const tomorrowYear = tomorrowParts.find(p => p.type === 'year')?.value;
+    const tomorrowMonth = tomorrowParts.find(p => p.type === 'month')?.value;
+    const tomorrowDay = tomorrowParts.find(p => p.type === 'day')?.value;
+    const tomorrowDate = `${tomorrowYear}-${tomorrowMonth}-${tomorrowDay}`;
+    
+    // Получаем все сеансы (только активные фильмы и не скрытые сеансы)
+    // Фильтруем по датам в JavaScript с учетом часового пояса Екатеринбурга
+    console.log(`[Board API] Ищем сеансы на даты: ${targetDate} и ${tomorrowDate}`);
+    
+    const allShowtimes = db.prepare(`
       SELECT 
         s.id,
         s.hallId,
@@ -39,11 +78,10 @@ export async function boardRoutes(fastify: FastifyInstance) {
         f.description
       FROM showtimes s
       JOIN films f ON s.filmId = f.id
-      WHERE (DATE(s.startAt) = ? OR DATE(s.startAt) = ?)
-        AND s.isHidden = 0
+      WHERE s.isHidden = 0
         AND f.isActive = 1
       ORDER BY f.title, s.startAt
-    `).all(targetDate, tomorrowDate) as Array<{
+    `).all() as Array<{
       id: number;
       hallId: number;
       startAt: string;
@@ -58,6 +96,34 @@ export async function boardRoutes(fastify: FastifyInstance) {
       durationMin: number;
       description: string | null;
     }>;
+    
+    // Функция для получения даты сеанса в часовом поясе Екатеринбурга
+    function getShowtimeDateInYekaterinburg(startAt: string): string {
+      const date = new Date(startAt);
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Yekaterinburg',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      const parts = formatter.formatToParts(date);
+      const year = parts.find(p => p.type === 'year')?.value;
+      const month = parts.find(p => p.type === 'month')?.value;
+      const day = parts.find(p => p.type === 'day')?.value;
+      return `${year}-${month}-${day}`;
+    }
+    
+    // Фильтруем сеансы по датам в часовом поясе Екатеринбурга
+    const showtimes = allShowtimes.filter(s => {
+      const showtimeDate = getShowtimeDateInYekaterinburg(s.startAt);
+      return showtimeDate === targetDate || showtimeDate === tomorrowDate;
+    });
+    
+    console.log(`[Board API] Всего сеансов в БД: ${allShowtimes.length}, отфильтровано: ${showtimes.length}`);
+    showtimes.forEach(s => {
+      const showtimeDate = getShowtimeDateInYekaterinburg(s.startAt);
+      console.log(`[Board API] Сеанс: ${s.title} - ${s.startAt} (дата в ЕКБ: ${showtimeDate})`);
+    });
     
     // Группируем по фильмам
     const filmMap = new Map<number, BoardFilm>();

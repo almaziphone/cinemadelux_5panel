@@ -69,7 +69,7 @@
                   <div class="film-meta-row">
                     <span class="meta-chip age">{{ film.ageRating }}</span>
                     <span v-if="film.format" class="meta-chip format">{{ film.format }}</span>
-                    <template v-if="!hasFutureShowtimes(film)">
+                    <template v-if="getNoShowtimesMessage(film) !== 'завтра'">
                       <span 
                         v-if="getNextShowtimePrice(film)" 
                         class="meta-chip price"
@@ -340,11 +340,22 @@ function isUpcoming(showtime: BoardShowtime): boolean {
 
 function getActiveShowtimes(showtimes: BoardShowtime[]): BoardShowtime[] {
   const now = new Date()
+  // Получаем завтрашнюю дату в часовом поясе Екатеринбурга для фильтрации
+  const tomorrowStr = getTomorrowDateInYekaterinburg()
+  
   return showtimes.filter(showtime => {
     // Игнорируем скрытые сеансы
     if (showtime.isHidden) return false
     const endAt = new Date(showtime.endAt)
-    return endAt > now // Показываем только сеансы, которые еще не закончились
+    // Показываем только сеансы, которые еще не закончились
+    if (endAt <= now) return false
+    
+    // Исключаем сеансы на завтра или позже - они показываются отдельно как "Завтра"
+    const showtimeDate = new Date(showtime.startAt)
+    const showtimeDateStr = getDateInYekaterinburg(showtimeDate)
+    if (showtimeDateStr >= tomorrowStr) return false
+    
+    return true
   })
 }
 
@@ -365,27 +376,73 @@ function getDateInYekaterinburg(date: Date): string {
 
 // Получает завтрашнюю дату в часовом поясе Екатеринбурга в формате YYYY-MM-DD
 function getTomorrowDateInYekaterinburg(): string {
+  // Получаем текущую дату и время в часовом поясе Екатеринбурга
   const now = new Date()
-  // Добавляем 24 часа для получения завтрашней даты
-  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+  const formatter = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Asia/Yekaterinburg',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  })
+  
+  // Получаем текущую дату
+  const todayParts = formatter.formatToParts(now)
+  const todayYear = parseInt(todayParts.find(p => p.type === 'year')?.value || '0')
+  const todayMonth = parseInt(todayParts.find(p => p.type === 'month')?.value || '0') - 1
+  const todayDay = parseInt(todayParts.find(p => p.type === 'day')?.value || '0')
+  
+  // Создаем дату завтра в часовом поясе Екатеринбурга
+  // Используем Date.UTC для создания даты, затем конвертируем в часовой пояс Екатеринбурга
+  const tomorrow = new Date(Date.UTC(todayYear, todayMonth, todayDay + 1, 12, 0, 0))
+  
+  // Форматируем завтрашнюю дату в часовом поясе Екатеринбурга
   return getDateInYekaterinburg(tomorrow)
 }
 
 // Общая функция для проверки наличия сеансов на завтра или позже
 function hasShowtimesTomorrowOrLater(film: BoardFilm): boolean {
+  if (!film.showtimes || film.showtimes.length === 0) {
+    return false
+  }
+  
   // Получаем завтрашнюю дату в часовом поясе Екатеринбурга
   const tomorrowStr = getTomorrowDateInYekaterinburg()
+  const todayStr = getCurrentDateInYekaterinburg()
+  
+  let foundTomorrow = false
   
   // Проверяем, есть ли сеансы завтра или позже (игнорируем скрытые)
-  const futureShowtimes = film.showtimes.filter(showtime => {
-    if (showtime.isHidden) return false
-    // Получаем дату сеанса в часовом поясе Екатеринбурга
-    const showtimeDate = new Date(showtime.startAt)
-    const showtimeDateStr = getDateInYekaterinburg(showtimeDate)
-    return showtimeDateStr >= tomorrowStr
-  })
+  for (const showtime of film.showtimes) {
+    try {
+      // Получаем дату сеанса в часовом поясе Екатеринбурга
+      const showtimeDate = new Date(showtime.startAt)
+      const showtimeDateStr = getDateInYekaterinburg(showtimeDate)
+      
+      // Отладочная информация
+      if (film.title) {
+        console.log(`Фильм: ${film.title}, Сеанс: ${showtime.startAt}, Дата в ЕКБ: ${showtimeDateStr}, Скрыт: ${showtime.isHidden}, Сегодня: ${todayStr}, Завтра: ${tomorrowStr}, >= завтра: ${showtimeDateStr >= tomorrowStr}`)
+      }
+      
+      // Пропускаем скрытые сеансы
+      if (showtime.isHidden) continue
+      
+      // Сравниваем строки дат (лексикографическое сравнение работает для формата YYYY-MM-DD)
+      if (showtimeDateStr >= tomorrowStr) {
+        foundTomorrow = true
+        console.log(`✓ Найден сеанс на завтра или позже для фильма "${film.title}": ${showtimeDateStr}`)
+      }
+    } catch (e) {
+      // Если ошибка парсинга даты, пропускаем этот сеанс
+      console.warn('Ошибка парсинга даты сеанса:', showtime.startAt, e)
+      continue
+    }
+  }
   
-  return futureShowtimes.length > 0
+  if (!foundTomorrow && film.title) {
+    console.log(`✗ Не найдено сеансов на завтра для фильма "${film.title}"`)
+  }
+  
+  return foundTomorrow
 }
 
 function getNoShowtimesMessage(film: BoardFilm): string {
@@ -396,9 +453,17 @@ function getNoShowtimesMessage(film: BoardFilm): string {
     return 'Нет сеансов'
   }
   
-  // Используем общую функцию для проверки наличия сеансов на завтра
+  // Проверяем наличие сеансов на завтра или позже
+  // Это нужно проверить ПЕРВЫМ, чтобы правильно определить, что показывать
   if (hasShowtimesTomorrowOrLater(film)) {
-    return 'завтра'
+    // Проверяем, есть ли активные сеансы на сегодня (которые еще не закончились)
+    const activeShowtimes = getActiveShowtimes(film.showtimes)
+    
+    // Если есть активные сеансы на сегодня, показываем их (не "завтра")
+    // Но если активных сеансов нет, показываем "завтра"
+    if (activeShowtimes.length === 0) {
+      return 'завтра'
+    }
   }
   
   return 'Нет сеансов'
@@ -533,6 +598,17 @@ function getNextShowtimePrice(film: BoardFilm): string | null {
 async function loadBoard() {
   try {
     const data = await getBoard()
+    console.log('[BoardView] Получены данные от API:', data)
+    console.log('[BoardView] Дата запроса:', data.date)
+    console.log('[BoardView] Количество фильмов:', data.films.length)
+    data.films.forEach(film => {
+      console.log(`[BoardView] Фильм: ${film.title}, сеансов: ${film.showtimes.length}`)
+      film.showtimes.forEach(st => {
+        const stDate = new Date(st.startAt)
+        const stDateStr = getDateInYekaterinburg(stDate)
+        console.log(`[BoardView]   Сеанс: ${st.startAt} (дата в ЕКБ: ${stDateStr}), скрыт: ${st.isHidden}`)
+      })
+    })
     boardData.value = data
   } catch (error) {
     console.error('Failed to load board:', error)
