@@ -1248,11 +1248,6 @@ onUnmounted(() => {
   width: 450px;
   height: 450px;
   object-fit: contain;
-  border: 3px solid rgba(0, 212, 255, 0.5);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 10px;
-  box-shadow: 0 0 30px rgba(0, 212, 255, 0.4);
   flex-shrink: 0;
 }
 
