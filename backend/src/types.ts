@@ -62,3 +62,11 @@ export interface User {
   id: number;
   username: string;
 }
+
+export interface Premier {
+  id: number;
+  title: string;
+  videoUrl: string;
+  sortOrder: number;
+  createdAt: string;
+}

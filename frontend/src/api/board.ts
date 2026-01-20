@@ -33,8 +33,21 @@ export interface BoardResponse {
   films: BoardFilm[]
 }
 
+export interface Premier {
+  id: number
+  title: string
+  videoUrl: string
+  sortOrder: number
+  createdAt?: string
+}
+
 export async function getBoard(date?: string): Promise<BoardResponse> {
   const params = date ? { date } : {}
   const response = await api.get<BoardResponse>('/board', { params })
   return response.data
+}
+
+export async function getPremieres(): Promise<Premier[]> {
+  const response = await api.get<{ premieres: Premier[] }>('/board/premieres')
+  return response.data.premieres
 }

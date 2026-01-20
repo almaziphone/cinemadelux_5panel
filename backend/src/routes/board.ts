@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { db } from '../db';
-import { BoardResponse, BoardFilm, BoardShowtime } from '../types';
+import { BoardResponse, BoardFilm, BoardShowtime, Premier } from '../types';
 
 export async function boardRoutes(fastify: FastifyInstance) {
   fastify.get('/api/board', async (request) => {
@@ -135,5 +135,11 @@ export async function boardRoutes(fastify: FastifyInstance) {
     };
     
     return response;
+  });
+
+  // Получить премьеры (публичный роут)
+  fastify.get('/api/board/premieres', async () => {
+    const premieres = db.prepare('SELECT * FROM premieres ORDER BY sortOrder, id').all() as Premier[];
+    return { premieres };
   });
 }

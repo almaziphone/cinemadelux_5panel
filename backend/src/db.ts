@@ -114,10 +114,22 @@ export function initDatabase() {
     db.prepare('INSERT INTO users (username, passwordHash) VALUES (?, ?)').run('admin', adminPassword);
   }
 
+  // Таблица премьер (роликов)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS premieres (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      videoUrl TEXT NOT NULL,
+      sortOrder INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
   // Индексы для производительности
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_showtimes_hall_start ON showtimes(hallId, startAt);
     CREATE INDEX IF NOT EXISTS idx_showtimes_film ON showtimes(filmId);
     CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expiresAt);
+    CREATE INDEX IF NOT EXISTS idx_premieres_sort ON premieres(sortOrder);
   `);
 }

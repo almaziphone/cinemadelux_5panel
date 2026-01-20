@@ -1,9 +1,11 @@
 import { FastifyInstance } from 'fastify';
 import { db } from '../db';
 import { requireAuth } from '../auth';
-import { Film, Showtime, Hall } from '../types';
-import { readFileSync, writeFileSync } from 'fs';
+import { Film, Showtime, Hall, Premier } from '../types';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, createWriteStream } from 'fs';
 import { join } from 'path';
+import { randomUUID } from 'crypto';
+import { pipeline } from 'stream/promises';
 
 export async function adminRoutes(fastify: FastifyInstance) {
   // Требуем авторизацию для всех админских роутов
@@ -371,5 +373,227 @@ export async function adminRoutes(fastify: FastifyInstance) {
     } catch (error: any) {
       return reply.code(500).send({ error: 'Failed to save prices', message: error.message });
     }
+  });
+
+  // ===== PREMIERES =====
+  
+  // Директория для хранения загруженных видео
+  const videosDir = join(process.cwd(), 'data', 'videos');
+  if (!existsSync(videosDir)) {
+    mkdirSync(videosDir, { recursive: true });
+  }
+
+  fastify.get('/api/admin/premieres', async () => {
+    const premieres = db.prepare('SELECT * FROM premieres ORDER BY sortOrder, id').all() as Premier[];
+    return { premieres };
+  });
+
+  // Загрузка видео файла
+  fastify.post('/api/admin/premieres/upload', async (request, reply) => {
+    fastify.log.info('Upload request received, headers:', {
+      'content-type': request.headers['content-type'],
+      'content-length': request.headers['content-length']
+    });
+    
+    try {
+      const data = await request.file();
+      fastify.log.info('File data received:', {
+        filename: data?.filename,
+        mimetype: data?.mimetype,
+        encoding: data?.encoding
+      });
+      
+      if (!data) {
+        return reply.code(400).send({ error: 'No file uploaded' });
+      }
+
+      // Проверяем тип файла
+      if (!data.mimetype.startsWith('video/')) {
+        return reply.code(400).send({ 
+          error: 'File must be a video',
+          message: 'Загруженный файл не является видео. Пожалуйста, выберите видео файл.'
+        });
+      }
+
+      // Генерируем уникальное имя файла с правильным расширением
+      const originalName = data.filename || 'video';
+      const fileExt = originalName.split('.').pop()?.toLowerCase() || 'mp4';
+      
+      // Проверяем, что расширение поддерживается браузером
+      const browserSupportedFormats = ['mp4', 'webm', 'ogg'];
+      const otherFormats = ['mov', 'avi', 'mkv'];
+      
+      if (!browserSupportedFormats.includes(fileExt) && !otherFormats.includes(fileExt)) {
+        return reply.code(400).send({ 
+          error: 'Unsupported video format',
+          message: `Формат ${fileExt} не поддерживается. Используйте MP4, WebM или OGG для лучшей совместимости с браузерами.`
+        });
+      }
+      
+      // Предупреждаем о форматах, которые могут не работать в браузере
+      if (otherFormats.includes(fileExt)) {
+        fastify.log.warn(`Uploaded video format ${fileExt} may not be supported by all browsers. Consider converting to MP4.`);
+      }
+      
+      const ext = fileExt;
+      const fileName = `${randomUUID()}.${ext}`;
+      const filePath = join(videosDir, fileName);
+
+      // Сохраняем файл
+      // data.file - это поток с содержимым файла
+      const fileStream = data.file;
+      fastify.log.info(`Starting upload: ${originalName} (${fileExt})`);
+      
+      const writeStream = createWriteStream(filePath);
+      let bytesWritten = 0;
+      
+      // Отслеживаем прогресс
+      fileStream.on('data', (chunk) => {
+        bytesWritten += chunk.length;
+        if (bytesWritten % (10 * 1024 * 1024) === 0) { // Логируем каждые 10MB
+          fastify.log.info(`Upload progress: ${Math.round(bytesWritten / 1024 / 1024)}MB`);
+        }
+      });
+      
+      try {
+        // Используем pipeline для безопасной передачи данных
+        await pipeline(fileStream, writeStream);
+        
+        fastify.log.info(`File uploaded successfully: ${fileName}, size: ${bytesWritten} bytes`);
+        const videoUrl = `/api/videos/${fileName}`;
+        return reply.send({ videoUrl, fileName });
+      } catch (error: any) {
+        fastify.log.error('Error during file upload:', error);
+        
+        // Удаляем частично записанный файл
+        try {
+          if (existsSync(filePath)) {
+            unlinkSync(filePath);
+          }
+        } catch (unlinkErr) {
+          // Игнорируем ошибку удаления
+        }
+        
+        return reply.code(500).send({ 
+          error: 'Failed to upload video', 
+          message: error?.message || 'Ошибка при загрузке видео файла' 
+        });
+      }
+    } catch (error: any) {
+      fastify.log.error('Upload error:', error);
+      return reply.code(500).send({ 
+        error: 'Failed to upload video', 
+        message: error.message || 'Неизвестная ошибка при загрузке видео' 
+      });
+    }
+  });
+
+  fastify.post('/api/admin/premieres', async (request, reply) => {
+    const data = request.body as Partial<Premier>;
+    
+    if (!data.title || !data.videoUrl) {
+      return reply.code(400).send({ error: 'Title and videoUrl are required' });
+    }
+
+    // Получаем максимальный sortOrder
+    const maxSort = db.prepare('SELECT MAX(sortOrder) as maxSort FROM premieres')
+      .get() as { maxSort: number | null };
+    const nextSort = (maxSort?.maxSort ?? -1) + 1;
+
+    const result = db.prepare(`
+      INSERT INTO premieres (title, videoUrl, sortOrder)
+      VALUES (?, ?, ?)
+    `).run(
+      data.title,
+      data.videoUrl,
+      nextSort
+    );
+
+    const premier = db.prepare('SELECT * FROM premieres WHERE id = ?')
+      .get(result.lastInsertRowid) as Premier;
+    
+    return { premier };
+  });
+
+  fastify.put('/api/admin/premieres/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const data = request.body as Partial<Premier>;
+    
+    const existing = db.prepare('SELECT * FROM premieres WHERE id = ?')
+      .get(Number(id)) as Premier | undefined;
+    
+    if (!existing) {
+      return reply.code(404).send({ error: 'Premier not found' });
+    }
+
+    // Если удаляется старое видео (заменяется на новое), удаляем файл
+    if (data.videoUrl && data.videoUrl !== existing.videoUrl) {
+      // Если старое видео было локальным файлом, удаляем его
+      if (existing.videoUrl.startsWith('/api/videos/')) {
+        const oldFileName = existing.videoUrl.replace('/api/videos/', '');
+        const oldFilePath = join(videosDir, oldFileName);
+        if (existsSync(oldFilePath)) {
+          try {
+            unlinkSync(oldFilePath);
+          } catch (err) {
+            // Игнорируем ошибки удаления
+          }
+        }
+      }
+    }
+
+    // При редактировании не меняем sortOrder - он остается прежним
+    db.prepare(`
+      UPDATE premieres 
+      SET title = ?, videoUrl = ?
+      WHERE id = ?
+    `).run(
+      data.title ?? existing.title,
+      data.videoUrl ?? existing.videoUrl,
+      Number(id)
+    );
+
+    const premier = db.prepare('SELECT * FROM premieres WHERE id = ?')
+      .get(Number(id)) as Premier;
+    
+    return { premier };
+  });
+
+  fastify.delete('/api/admin/premieres/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    
+    const existing = db.prepare('SELECT * FROM premieres WHERE id = ?')
+      .get(Number(id)) as Premier | undefined;
+    
+    if (!existing) {
+      return reply.code(404).send({ error: 'Premier not found' });
+    }
+
+    // Удаляем файл, если это локальный файл
+    if (existing.videoUrl.startsWith('/api/videos/')) {
+      const fileName = existing.videoUrl.replace('/api/videos/', '');
+      const filePath = join(videosDir, fileName);
+      if (existsSync(filePath)) {
+        try {
+          unlinkSync(filePath);
+        } catch (err) {
+          // Игнорируем ошибки удаления
+        }
+      }
+    }
+
+    // Удаляем ролик
+    db.prepare('DELETE FROM premieres WHERE id = ?').run(Number(id));
+    
+    // Пересчитываем sortOrder для всех оставшихся роликов (0, 1, 2, ...)
+    const remainingPremieres = db.prepare('SELECT id FROM premieres ORDER BY sortOrder, id')
+      .all() as Array<{ id: number }>;
+    
+    remainingPremieres.forEach((premier, index) => {
+      db.prepare('UPDATE premieres SET sortOrder = ? WHERE id = ?')
+        .run(index, premier.id);
+    });
+    
+    return { success: true };
   });
 }

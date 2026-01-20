@@ -262,6 +262,70 @@
           </table>
         </div>
       </div>
+
+      <!-- Календарь премьер -->
+      <div v-if="activeTab === 'premieres'" class="tab-content">
+        <div class="section-header">
+          <h2>Календарь премьер</h2>
+          <button @click="openPremierModal()" class="add-button">+ Добавить ролик</button>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Название</th>
+                <th>Видео</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="premier in premieres" :key="premier.id">
+                <td>{{ premier.title }}</td>
+                <td>
+                  <div v-if="premier.videoUrl" style="position: relative;">
+                    <video 
+                      :src="getVideoUrl(premier.videoUrl)" 
+                      style="max-width: 200px; max-height: 100px; display: block; background: #000;" 
+                      controls
+                      preload="metadata"
+                      @error="(e) => handleVideoError(e, premier.id!)"
+                      @loadedmetadata="(e) => handleVideoLoaded(e, premier.id!)"
+                      @canplay="(e) => handleVideoCanPlay(e, premier.id!)"
+                    >
+                      Ваш браузер не поддерживает воспроизведение видео.
+                    </video>
+                    <div v-if="videoErrors[premier.id!]" style="font-size: 11px; color: #f44336; margin-top: 5px; max-width: 200px; padding: 8px; background: #ffebee; border-radius: 4px;">
+                      <strong>⚠️ {{ videoErrors[premier.id!] }}</strong>
+                      <br><br>
+                      <span style="font-size: 10px; color: #666;">
+                        <strong>Решение:</strong><br>
+                        1. Удалите это видео<br>
+                        2. Конвертируйте видео в MP4 с кодеком H.264<br>
+                        3. Загрузите заново<br><br>
+                        <strong>Рекомендуемые настройки:</strong><br>
+                        • Формат: MP4<br>
+                        • Кодек видео: H.264<br>
+                        • Кодек аудио: AAC<br>
+                        • Разрешение: до 1920x1080
+                      </span>
+                    </div>
+                  </div>
+                  <span v-else class="no-poster">—</span>
+                </td>
+                <td>
+                  <button @click="openPremierModal(premier)" class="edit-button">Редактировать</button>
+                  <button @click="deletePremierHandler(premier.id!)" class="delete-button">Удалить</button>
+                </td>
+              </tr>
+              <tr v-if="premieres.length === 0">
+                <td colspan="3" style="text-align: center; color: #999; padding: 20px;">
+                  Нет роликов. Добавьте первый ролик.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- Модальное окно фильма -->
@@ -429,6 +493,53 @@
         </form>
       </div>
     </div>
+
+    <!-- Модальное окно премьеры -->
+    <div v-if="premierModalOpen" class="modal-overlay" @click.self="closePremierModal">
+      <div class="modal">
+        <h3>{{ editingPremier?.id ? 'Редактировать ролик' : 'Добавить ролик' }}</h3>
+        <form @submit.prevent="savePremier" class="modal-form">
+          <div class="form-group">
+            <label>Название *</label>
+            <input v-model="premierForm.title" required />
+          </div>
+          <div class="form-group">
+            <label>Видео файл *</label>
+            <input 
+              type="file" 
+              accept="video/mp4,video/webm,video/ogg,video/quicktime" 
+              @change="handleVideoFileChange"
+              ref="videoFileInput"
+              required
+            />
+            <div style="font-size: 12px; color: #666; margin-top: 5px; padding: 8px; background: #e3f2fd; border-radius: 4px;">
+              <strong>Рекомендуемые форматы:</strong><br>
+              • <strong>MP4 с кодеком H.264</strong> (лучшая совместимость)<br>
+              • WebM (альтернатива)<br>
+              • Максимальный размер: 500MB<br><br>
+              <strong>Важно:</strong> Если видео не воспроизводится, конвертируйте его в MP4 (H.264) с помощью программ типа HandBrake, VLC или онлайн-конвертеров.
+            </div>
+            <div v-if="premierForm.videoUrl" class="video-preview">
+              <video 
+                :src="getVideoUrl(premierForm.videoUrl)" 
+                controls 
+                style="max-width: 100%; max-height: 200px; background: #000;"
+                @error="(e) => { premierError = 'Ошибка загрузки видео. Проверьте формат файла.' }"
+              ></video>
+              <button type="button" @click="premierForm.videoUrl = ''; if (videoFileInput) videoFileInput.value = ''" class="delete-button" style="margin-top: 10px;">Удалить видео</button>
+            </div>
+            <div v-else-if="uploadingVideo" class="upload-status">
+              Загрузка видео...
+            </div>
+          </div>
+          <div v-if="premierError" class="error-message">{{ premierError }}</div>
+          <div class="modal-actions">
+            <button type="button" @click="closePremierModal" class="cancel-button">Отмена</button>
+            <button type="submit" class="save-button" :disabled="uploadingVideo">Сохранить</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -449,9 +560,15 @@ import {
   updateHall,
   getPrices,
   updatePrices,
+  getPremieres,
+  uploadPremierVideo,
+  createPremier,
+  updatePremier,
+  deletePremier,
   type Film,
   type Showtime,
-  type Hall
+  type Hall,
+  type Premier
 } from '../api/admin'
 import { getFilmById, type KinopoiskFilm } from '../api/kinopoisk'
 
@@ -468,20 +585,35 @@ const pricesSaving = ref(false)
 const pricesError = ref('')
 const pricesSuccess = ref('')
 
+// Премьеры
+const premieres = ref<Premier[]>([])
+const premierModalOpen = ref(false)
+const editingPremier = ref<Premier | null>(null)
+const premierForm = ref<Partial<Premier>>({
+  title: '',
+  videoUrl: '',
+  sortOrder: 0
+})
+const premierError = ref('')
+const uploadingVideo = ref(false)
+const videoFileInput = ref<HTMLInputElement | null>(null)
+const videoErrors = ref<Record<number, string>>({})
+
 // Загружаем сохраненный таб из localStorage или используем 'films' по умолчанию
-const savedTab = localStorage.getItem('adminActiveTab') as 'films' | 'showtimes' | 'schedule' | 'halls' | 'prices' | null
-const defaultTab: 'films' | 'showtimes' | 'schedule' | 'halls' | 'prices' = savedTab && ['films', 'showtimes', 'schedule', 'halls', 'prices'].includes(savedTab) 
+const savedTab = localStorage.getItem('adminActiveTab') as 'films' | 'showtimes' | 'schedule' | 'halls' | 'prices' | 'premieres' | null
+const defaultTab: 'films' | 'showtimes' | 'schedule' | 'halls' | 'prices' | 'premieres' = savedTab && ['films', 'showtimes', 'schedule', 'halls', 'prices', 'premieres'].includes(savedTab) 
   ? savedTab 
   : 'films'
 
-const activeTab = ref<'films' | 'showtimes' | 'schedule' | 'halls' | 'prices'>(defaultTab)
-const tabs = ['films', 'showtimes', 'schedule', 'halls', 'prices'] as const
+const activeTab = ref<'films' | 'showtimes' | 'schedule' | 'halls' | 'prices' | 'premieres'>(defaultTab)
+const tabs = ['films', 'showtimes', 'schedule', 'halls', 'prices', 'premieres'] as const
 const tabLabels = {
   films: 'Фильмы',
   showtimes: 'Сеансы',
   schedule: 'Расписание',
   halls: 'Залы',
-  prices: 'Цены'
+  prices: 'Цены',
+  premieres: 'Календарь премьер'
 }
 
 // Сохраняем активный таб в localStorage при изменении
@@ -493,8 +625,10 @@ watch(activeTab, (newTab) => {
     loadWeekShowtimes()
   } else if (newTab === 'prices') {
     loadPrices()
+  } else if (newTab === 'premieres') {
+    loadPremieres()
   }
-})
+}, { immediate: true }) // immediate: true - выполнить сразу при инициализации
 
 // Расписание недели
 const currentWeekStart = ref<Date>(getWeekStartForToday())
@@ -1060,6 +1194,244 @@ function removePrice(index: number) {
   pricesChanged.value = true
 }
 
+// Функции для работы с премьерами
+async function loadPremieres() {
+  try {
+    premieres.value = await getPremieres()
+  } catch (err: any) {
+    console.error('Failed to load premieres:', err)
+  }
+}
+
+function openPremierModal(premier?: Premier) {
+  editingPremier.value = premier || null
+  premierForm.value = premier 
+    ? { title: premier.title, videoUrl: premier.videoUrl }
+    : { title: '', videoUrl: '' }
+  premierError.value = ''
+  uploadingVideo.value = false
+  if (videoFileInput.value) {
+    videoFileInput.value.value = ''
+  }
+  premierModalOpen.value = true
+  
+  // Если редактируем существующую премьеру, videoUrl уже есть, ошибка не нужна
+  if (premier?.videoUrl) {
+    premierError.value = ''
+  }
+}
+
+function closePremierModal() {
+  premierModalOpen.value = false
+  editingPremier.value = null
+  premierForm.value = { title: '', videoUrl: '' }
+  premierError.value = ''
+  uploadingVideo.value = false
+  if (videoFileInput.value) {
+    videoFileInput.value.value = ''
+  }
+}
+
+async function handleVideoFileChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) {
+    // Если файл не выбран, но есть существующий videoUrl при редактировании - оставляем его
+    if (editingPremier.value?.id && editingPremier.value.videoUrl) {
+      premierForm.value.videoUrl = editingPremier.value.videoUrl
+    }
+    return
+  }
+
+  // Проверяем формат файла перед загрузкой
+  const fileName = file.name.toLowerCase()
+  const supportedExtensions = ['.mp4', '.webm', '.ogg', '.mov']
+  const fileExt = fileName.substring(fileName.lastIndexOf('.'))
+  
+  if (!supportedExtensions.includes(fileExt)) {
+    premierError.value = `Формат ${fileExt} не поддерживается. Используйте MP4, WebM, OGG или MOV.`
+    uploadingVideo.value = false
+    if (target) target.value = '' // Очищаем выбор файла
+    return
+  }
+
+  // Проверяем MIME-тип
+  if (!file.type.startsWith('video/')) {
+    premierError.value = 'Выбранный файл не является видео. Пожалуйста, выберите видео файл.'
+    uploadingVideo.value = false
+    if (target) target.value = ''
+    return
+  }
+
+  uploadingVideo.value = true
+  premierError.value = ''
+
+  try {
+    console.log('Starting video upload:', file.name, 'Size:', file.size, 'Type:', file.type)
+    console.log('File details:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified
+    })
+    
+    const result = await uploadPremierVideo(file)
+    premierForm.value.videoUrl = result.videoUrl
+    premierError.value = '' // Очищаем ошибки при успешной загрузке
+    console.log('Video uploaded successfully:', result.videoUrl)
+  } catch (err: any) {
+    let errorMsg = 'Ошибка загрузки видео'
+    
+    // Проверяем различные типы ошибок
+    if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+      errorMsg = 'Таймаут при загрузке. Файл слишком большой или медленное соединение. Попробуйте уменьшить размер файла или использовать более быстрое соединение.'
+    } else if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error') || err.message?.includes('NetworkError')) {
+      errorMsg = 'Ошибка сети. Проверьте:\n1. Запущен ли сервер (проверьте консоль бэкенда)\n2. Подключение к интернету\n3. Размер файла (максимум 500MB)\n4. Попробуйте перезапустить серверы'
+    } else if (err.code === 'ERR_CONNECTION_REFUSED') {
+      errorMsg = 'Не удалось подключиться к серверу. Убедитесь, что бэкенд запущен на порту 8080.'
+    } else if (err.response?.status === 413) {
+      errorMsg = 'Файл слишком большой. Максимальный размер: 500MB. Попробуйте уменьшить размер файла.'
+    } else if (err.response?.data?.error || err.response?.data?.message) {
+      errorMsg = err.response.data.error || err.response.data.message
+    } else if (err.message) {
+      errorMsg = err.message
+    }
+    
+    premierError.value = errorMsg
+    
+    // Если это ошибка формата, даем более подробную информацию
+    if (errorMsg.includes('формат') || errorMsg.includes('format') || errorMsg.includes('Unsupported')) {
+      premierError.value = `Формат файла "${fileExt}" не поддерживается. Рекомендуется использовать MP4 с кодеком H.264. Вы можете конвертировать видео с помощью онлайн-конвертеров или программ типа HandBrake.`
+    }
+    
+    // Очищаем videoUrl при ошибке
+    premierForm.value.videoUrl = ''
+    if (target) target.value = ''
+  } finally {
+    uploadingVideo.value = false
+  }
+}
+
+async function savePremier() {
+  if (!premierForm.value.title) {
+    premierError.value = 'Название обязательно'
+    return
+  }
+  
+  // При создании нового - обязательно нужен файл
+  if (!editingPremier.value?.id && !premierForm.value.videoUrl) {
+    premierError.value = 'Необходимо загрузить видео файл'
+    return
+  }
+  
+  // При редактировании - если файл не выбран заново, используем существующий
+  if (editingPremier.value?.id && !premierForm.value.videoUrl) {
+    // Если при редактировании videoUrl пустой, но был выбран файл, значит загрузка не завершилась
+    if (uploadingVideo.value) {
+      premierError.value = 'Дождитесь завершения загрузки видео'
+      return
+    }
+    // Если файл не был выбран и videoUrl пустой, используем существующий
+    if (editingPremier.value.videoUrl) {
+      premierForm.value.videoUrl = editingPremier.value.videoUrl
+    } else {
+      premierError.value = 'Необходимо загрузить видео файл'
+      return
+    }
+  }
+
+  if (!premierForm.value.videoUrl) {
+    premierError.value = 'Необходимо загрузить видео файл'
+    return
+  }
+
+  premierError.value = ''
+
+  try {
+    // Убираем sortOrder из данных - он будет вычисляться автоматически на бэкенде
+    const dataToSave = {
+      title: premierForm.value.title,
+      videoUrl: premierForm.value.videoUrl
+    }
+    
+    if (editingPremier.value?.id) {
+      await updatePremier(editingPremier.value.id, dataToSave)
+    } else {
+      await createPremier(dataToSave as Premier)
+    }
+    await loadPremieres()
+    closePremierModal()
+  } catch (err: any) {
+    premierError.value = err.response?.data?.error || err.response?.data?.message || 'Ошибка сохранения'
+  }
+}
+
+async function deletePremierHandler(id: number) {
+  if (!confirm('Вы уверены, что хотите удалить этот ролик?')) {
+    return
+  }
+
+  try {
+    await deletePremier(id)
+    await loadPremieres()
+  } catch (err: any) {
+    alert(err.response?.data?.error || err.response?.data?.message || 'Ошибка удаления')
+  }
+}
+
+function handleVideoError(event: Event, premierId: number) {
+  const video = event.target as HTMLVideoElement
+  const error = video.error
+  let errorMessage = 'Неизвестная ошибка'
+  
+  if (error) {
+    switch (error.code) {
+      case error.MEDIA_ERR_ABORTED:
+        errorMessage = 'Загрузка прервана'
+        break
+      case error.MEDIA_ERR_NETWORK:
+        errorMessage = 'Ошибка сети. Проверьте URL и доступность файла.'
+        break
+      case error.MEDIA_ERR_DECODE:
+        errorMessage = 'Ошибка декодирования. Файл может быть поврежден.'
+        break
+      case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+        errorMessage = 'Формат не поддерживается браузером. Используйте MP4 (H.264) или WebM.'
+        break
+      default:
+        errorMessage = `Ошибка ${error.code}`
+    }
+  } else {
+    errorMessage = 'Не удалось загрузить видео. Проверьте URL.'
+  }
+  
+  videoErrors.value[premierId] = errorMessage
+  console.error('Video error for premier', premierId, ':', errorMessage, 'URL:', video.src, 'Error object:', error)
+}
+
+function handleVideoLoaded(event: Event, premierId: number) {
+  // Видео успешно загружено
+  delete videoErrors.value[premierId]
+}
+
+function handleVideoCanPlay(event: Event, premierId: number) {
+  // Видео готово к воспроизведению
+  delete videoErrors.value[premierId]
+}
+
+function getVideoUrl(url: string): string {
+  // Если URL уже полный (начинается с http:// или https://), возвращаем как есть
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url
+  }
+  // Если относительный путь начинается с /api/, возвращаем как есть (будет работать через прокси)
+  if (url.startsWith('/api/')) {
+    return url
+  }
+  // Иначе добавляем /api/ в начало
+  return url.startsWith('/') ? url : `/api/${url}`
+}
+
 onMounted(async () => {
   await loadUser()
   await loadFilms()
@@ -1067,6 +1439,10 @@ onMounted(async () => {
   await loadHalls()
   await loadWeekShowtimes()
   await loadPrices()
+  // Загружаем премьеры, если активная вкладка - "premieres" или всегда (для надежности)
+  if (activeTab.value === 'premieres') {
+    await loadPremieres()
+  }
 })
 
 </script>

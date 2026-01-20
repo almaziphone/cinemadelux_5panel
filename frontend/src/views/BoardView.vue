@@ -15,6 +15,26 @@
               <div class="time-display">{{ currentTime }}</div>
             </div>
           </div>
+          <!-- Если четвертый монитор пустой, показываем календарь премьер -->
+          <div v-else-if="index === 3 && monitor.films.length === 0 && premieres.length > 0" class="premieres-display">
+            <div class="premieres-content">
+              <h2 class="premieres-title">СКОРО В КИНО</h2>
+              <div class="premieres-video-container">
+                  <video
+                    v-if="currentPremierVideoUrl"
+                    ref="premierVideoRef"
+                    :src="currentPremierVideoUrl"
+                    class="premier-video"
+                    @ended="handleVideoEnded"
+                    @loadeddata="handleVideoLoaded"
+                    @error="handleVideoError"
+                    @canplay="handleVideoCanPlay"
+                    muted
+                    playsinline
+                  ></video>
+              </div>
+            </div>
+          </div>
           <!-- Обычное отображение фильмов -->
           <div v-else class="films-showcase">
             <div
@@ -66,7 +86,7 @@
                     </template>
                   </div>
                   <div 
-                    v-if="hasFutureShowtimes(film)" 
+                    v-if="getNoShowtimesMessage(film) === 'завтра'" 
                     class="future-text"
                   >
                     Завтра
@@ -74,7 +94,7 @@
                 </div>
 
                 <!-- Времена сеансов чипами -->
-                <div class="showtimes-chips" v-if="!hasFutureShowtimes(film)">
+                <div class="showtimes-chips" v-if="getNoShowtimesMessage(film) !== 'завтра'">
                   <div
                     v-for="showtime in getActiveShowtimes(film.showtimes)"
                     :key="showtime.id"
@@ -97,8 +117,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { getBoard, type BoardResponse, type BoardFilm, type BoardShowtime } from '../api/board'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { getBoard, getPremieres, type BoardResponse, type BoardFilm, type BoardShowtime, type Premier } from '../api/board'
 
 const containerRef = ref<HTMLElement>()
 // Получаем текущую дату в часовом поясе Екатеринбурга
@@ -125,8 +145,23 @@ const boardData = ref<BoardResponse>({
 const currentTime = ref('')
 const currentDate = ref('')
 
+// Премьеры
+const premieres = ref<Premier[]>([])
+const currentPremierIndex = ref(0)
+const premierVideoRef = ref<HTMLVideoElement | null>(null)
+
+// Вычисляемое свойство для текущего URL видео
+const currentPremierVideoUrl = computed(() => {
+  if (premieres.value.length === 0) return ''
+  const index = currentPremierIndex.value
+  if (index < 0 || index >= premieres.value.length) return ''
+  const premier = premieres.value[index]
+  return premier?.videoUrl || ''
+})
+
 let updateInterval: number | null = null
 let timeInterval: number | null = null
+let premieresInterval: number | null = null
 
 const displayedFilms = computed(() => {
   return boardData.value.films
@@ -313,17 +348,47 @@ function getActiveShowtimes(showtimes: BoardShowtime[]): BoardShowtime[] {
   })
 }
 
+// Получает дату в часовом поясе Екатеринбурга в формате YYYY-MM-DD
+function getDateInYekaterinburg(date: Date): string {
+  const formatter = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Asia/Yekaterinburg',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  })
+  const parts = formatter.formatToParts(date)
+  const year = parts.find(p => p.type === 'year')?.value
+  const month = parts.find(p => p.type === 'month')?.value
+  const day = parts.find(p => p.type === 'day')?.value
+  return `${year}-${month}-${day}`
+}
+
+// Получает завтрашнюю дату в часовом поясе Екатеринбурга в формате YYYY-MM-DD
+function getTomorrowDateInYekaterinburg(): string {
+  const now = new Date()
+  // Добавляем 24 часа для получения завтрашней даты
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+  return getDateInYekaterinburg(tomorrow)
+}
+
+// Общая функция для проверки наличия сеансов на завтра или позже
+function hasShowtimesTomorrowOrLater(film: BoardFilm): boolean {
+  // Получаем завтрашнюю дату в часовом поясе Екатеринбурга
+  const tomorrowStr = getTomorrowDateInYekaterinburg()
+  
+  // Проверяем, есть ли сеансы завтра или позже (игнорируем скрытые)
+  const futureShowtimes = film.showtimes.filter(showtime => {
+    if (showtime.isHidden) return false
+    // Получаем дату сеанса в часовом поясе Екатеринбурга
+    const showtimeDate = new Date(showtime.startAt)
+    const showtimeDateStr = getDateInYekaterinburg(showtimeDate)
+    return showtimeDateStr >= tomorrowStr
+  })
+  
+  return futureShowtimes.length > 0
+}
+
 function getNoShowtimesMessage(film: BoardFilm): string {
-  // Получаем текущую дату в часовом поясе Екатеринбурга
-  const todayStr = getCurrentDateInYekaterinburg()
-  
-  // Вычисляем завтрашнюю дату
-  const todayParts = todayStr.split('-')
-  const todayDate = new Date(parseInt(todayParts[0]), parseInt(todayParts[1]) - 1, parseInt(todayParts[2]))
-  const tomorrowDate = new Date(todayDate)
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1)
-  const tomorrowStr = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`
-  
   // Проверяем все сеансы фильма (игнорируем скрытые)
   const visibleShowtimes = film.showtimes.filter(showtime => !showtime.isHidden)
   
@@ -331,15 +396,8 @@ function getNoShowtimesMessage(film: BoardFilm): string {
     return 'Нет сеансов'
   }
   
-  // Просто проверяем, есть ли сеансы завтра или позже по дате начала (сравниваем строки дат)
-  const futureShowtimes = visibleShowtimes.filter(showtime => {
-    const startAt = new Date(showtime.startAt)
-    // Получаем дату сеанса в формате YYYY-MM-DD для сравнения
-    const showtimeDateStr = `${startAt.getFullYear()}-${String(startAt.getMonth() + 1).padStart(2, '0')}-${String(startAt.getDate()).padStart(2, '0')}`
-    return showtimeDateStr >= tomorrowStr
-  })
-  
-  if (futureShowtimes.length > 0) {
+  // Используем общую функцию для проверки наличия сеансов на завтра
+  if (hasShowtimesTomorrowOrLater(film)) {
     return 'завтра'
   }
   
@@ -451,23 +509,8 @@ function hasUpcomingShowtime(film: BoardFilm): boolean {
 }
 
 function hasFutureShowtimes(film: BoardFilm): boolean {
-  // Получаем текущую дату в часовом поясе Екатеринбурга
-  const todayStr = getCurrentDateInYekaterinburg()
-  const todayParts = todayStr.split('-')
-  const todayDate = new Date(parseInt(todayParts[0]), parseInt(todayParts[1]) - 1, parseInt(todayParts[2]))
-  const tomorrowDate = new Date(todayDate)
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1)
-  const tomorrowStr = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`
-  
-  // Проверяем, есть ли сеансы завтра или позже
-  const futureShowtimes = film.showtimes.filter(showtime => {
-    if (showtime.isHidden) return false
-    const startAt = new Date(showtime.startAt)
-    const showtimeDateStr = `${startAt.getFullYear()}-${String(startAt.getMonth() + 1).padStart(2, '0')}-${String(startAt.getDate()).padStart(2, '0')}`
-    return showtimeDateStr >= tomorrowStr
-  })
-  
-  return futureShowtimes.length > 0
+  // Используем общую функцию для консистентности
+  return hasShowtimesTomorrowOrLater(film)
 }
 
 function getNextShowtimePrice(film: BoardFilm): string | null {
@@ -496,12 +539,245 @@ async function loadBoard() {
   }
 }
 
+async function loadPremieres() {
+  try {
+    const newPremieres = await getPremieres()
+    
+    // Сортируем по sortOrder, затем по id (на случай одинакового sortOrder)
+    newPremieres.sort((a, b) => {
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder
+      }
+      return a.id - b.id
+    })
+    
+    // Проверяем, изменился ли список премьер
+    // 1. Изменилось количество
+    const countChanged = premieres.value.length !== newPremieres.length
+    
+    // 2. Проверяем удаление - есть ли в новом списке все старые ID
+    const hasDeleted = premieres.value.some(oldPremier => 
+      !newPremieres.find(np => np.id === oldPremier.id)
+    )
+    
+    // 3. Проверяем добавление - есть ли в новом списке новые ID
+    const hasAdded = newPremieres.some(newPremier => 
+      !premieres.value.find(op => op.id === newPremier.id)
+    )
+    
+    // 4. Проверяем изменение существующих роликов или порядка
+    const hasModified = premieres.value.some((oldPremier, oldIdx) => {
+      const newIdx = newPremieres.findIndex(np => np.id === oldPremier.id)
+      if (newIdx === -1) return false
+      const newPremier = newPremieres[newIdx]
+      return (
+        oldPremier.videoUrl !== newPremier.videoUrl ||
+        oldPremier.title !== newPremier.title ||
+        oldPremier.sortOrder !== newPremier.sortOrder ||
+        oldIdx !== newIdx // Изменился порядок
+      )
+    })
+    
+    const hasChanged = countChanged || hasDeleted || hasAdded || hasModified
+    
+    // Если список изменился, обновляем и перезапускаем
+    if (hasChanged) {
+      // Сохраняем информацию о текущем ролике до обновления
+      const currentPremier = premieres.value[currentPremierIndex.value]
+      const currentPremierId = currentPremier?.id
+      
+      // Обновляем список (уже отсортированный)
+      premieres.value = newPremieres
+      
+      // Если список пуст, останавливаем воспроизведение
+      if (premieres.value.length === 0) {
+        const video = getVideoElement()
+        if (video) {
+          video.pause()
+          video.currentTime = 0
+        }
+        currentPremierIndex.value = 0
+        return
+      }
+      
+      // Пытаемся найти текущий ролик в новом списке
+      let newIndex = -1
+      if (currentPremierId) {
+        newIndex = newPremieres.findIndex(np => np.id === currentPremierId)
+      }
+      
+      // Если текущий ролик был удален или не найден, начинаем с первого
+      if (newIndex === -1) {
+        const video = getVideoElement()
+        if (video) {
+          video.pause()
+          video.currentTime = 0
+        }
+        currentPremierIndex.value = 0
+      } else {
+        // Если текущий ролик остался, сохраняем его новую позицию
+        currentPremierIndex.value = newIndex
+      }
+      
+      await nextTick()
+      // Даем время на рендеринг video элемента
+      setTimeout(() => {
+        startPremierPlayback()
+      }, 500)
+    } else if (premieres.value.length === 0 && newPremieres.length > 0) {
+      // Если это первая загрузка и есть ролики
+      premieres.value = newPremieres
+      currentPremierIndex.value = 0
+      await nextTick()
+      setTimeout(() => {
+        startPremierPlayback()
+      }, 500)
+    }
+  } catch (error) {
+    // Ошибка загрузки премьер
+  }
+}
+
+function startPremierPlayback() {
+  if (premieres.value.length === 0) return
+  
+  // Устанавливаем первый индекс
+  currentPremierIndex.value = 0
+  
+  // Ждем немного для инициализации видео элемента и обновления DOM
+  setTimeout(() => {
+    // В Vue 3 ref может быть массивом, если элемент еще не создан
+    let video: HTMLVideoElement | null = null
+    
+    if (Array.isArray(premierVideoRef.value)) {
+      video = premierVideoRef.value[0] as HTMLVideoElement
+    } else if (premierVideoRef.value instanceof HTMLVideoElement) {
+      video = premierVideoRef.value
+    } else {
+      // Пробуем найти элемент через DOM
+      const videoElement = document.querySelector('.premier-video') as HTMLVideoElement
+      if (videoElement) {
+        video = videoElement
+        premierVideoRef.value = video
+      }
+    }
+    
+    if (!video) {
+      // Пробуем еще раз через задержку
+      setTimeout(() => startPremierPlayback(), 500)
+      return
+    }
+    
+    if (typeof video.play !== 'function') {
+      return
+    }
+    
+    video.currentTime = 0
+    video.play().catch(() => {
+      // Ошибка воспроизведения
+    })
+  }, 500)
+}
+
+function getVideoElement(): HTMLVideoElement | null {
+  // В Vue 3 ref может быть массивом
+  if (Array.isArray(premierVideoRef.value)) {
+    return premierVideoRef.value[0] as HTMLVideoElement || null
+  } else if (premierVideoRef.value instanceof HTMLVideoElement) {
+    return premierVideoRef.value
+  } else {
+    // Пробуем найти через DOM
+    const videoElement = document.querySelector('.premier-video') as HTMLVideoElement
+    if (videoElement) {
+      premierVideoRef.value = videoElement
+      return videoElement
+    }
+  }
+  return null
+}
+
+function handleVideoEnded() {
+  if (premieres.value.length === 0) return
+  
+  const video = getVideoElement()
+  if (!video || typeof video.pause !== 'function') {
+    return
+  }
+  
+  // Останавливаем текущее видео
+  video.pause()
+  video.currentTime = 0
+  
+  // Вычисляем следующий индекс (циклическое переключение)
+  const nextIdx = (currentPremierIndex.value + 1) % premieres.value.length
+  
+  // Обновляем индекс - это автоматически изменит src через computed
+  currentPremierIndex.value = nextIdx
+  
+  // Ждем обновления src и запускаем следующее видео
+  setTimeout(() => {
+    const nextVideo = getVideoElement()
+    if (!nextVideo) {
+      // Если видео элемент не найден, пробуем еще раз
+      setTimeout(() => handleVideoEnded(), 300)
+      return
+    }
+    
+    if (typeof nextVideo.play !== 'function') {
+      return
+    }
+    
+    // Сбрасываем время и загружаем новое видео
+    nextVideo.currentTime = 0
+    nextVideo.load() // Принудительно загружаем новое видео
+    
+    // Пробуем запустить воспроизведение
+    const playPromise = nextVideo.play()
+    if (playPromise) {
+      playPromise
+        .then(() => {
+          // Видео успешно запущено
+        })
+        .catch(() => {
+          // Если не удалось запустить, пробуем еще раз
+          setTimeout(() => {
+            nextVideo.play().catch(() => {
+              // Если и повторная попытка не удалась, пробуем переключиться на следующее
+              setTimeout(() => handleVideoEnded(), 500)
+            })
+          }, 300)
+        })
+    }
+  }, 200)
+}
+
+function handleVideoLoaded() {
+  // Видео загружено
+}
+
+function handleVideoCanPlay() {
+  const video = getVideoElement()
+  if (video) {
+    // Если это первое видео и оно готово, запускаем его
+    if (currentPremierIndex.value === 0 && video.paused) {
+      video.play().catch(() => {})
+    }
+  }
+}
+
+function handleVideoError() {
+  // Ошибка загрузки видео
+}
+
 onMounted(() => {
   updateTime()
   loadBoard()
+  loadPremieres()
   
   timeInterval = window.setInterval(updateTime, 1000)
   updateInterval = window.setInterval(loadBoard, 30000)
+  // Обновляем премьеры каждые 30 секунд
+  premieresInterval = window.setInterval(loadPremieres, 30000)
 })
 
 onUnmounted(() => {
@@ -510,6 +786,9 @@ onUnmounted(() => {
   }
   if (timeInterval !== null) {
     clearInterval(timeInterval)
+  }
+  if (premieresInterval !== null) {
+    clearInterval(premieresInterval)
   }
 })
 </script>
@@ -881,5 +1160,75 @@ onUnmounted(() => {
     opacity: 0.95;
     transform: scale(1.02);
   }
+}
+
+/* Календарь премьер */
+.premieres-display {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
+}
+
+.premieres-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  box-sizing: border-box;
+}
+
+.premieres-title {
+  font-size: 96px;
+  font-weight: 900;
+  color: #00d4ff;
+  text-shadow: 
+    0 0 30px rgba(0, 212, 255, 0.9),
+    0 0 60px rgba(0, 212, 255, 0.7),
+    0 0 90px rgba(0, 212, 255, 0.5);
+  letter-spacing: 8px;
+  margin-bottom: 40px;
+  text-transform: uppercase;
+  animation: titlePulse 3s ease-in-out infinite;
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes titlePulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.premieres-video-container {
+  width: 100%;
+  height: calc(100% - 200px);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.premier-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+
+.premier-video.active {
+  opacity: 1;
+  z-index: 1;
 }
 </style>
