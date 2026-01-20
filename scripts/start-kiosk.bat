@@ -35,12 +35,14 @@ if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
 REM Открываем браузер
 if defined CHROME_PATH (
     echo Opening Chrome in kiosk mode...
-    start "" "%CHROME_PATH%" --kiosk --app=http://localhost:8080/board
+    REM Используем --kiosk для полноэкранного режима и --start-fullscreen для надежности
+    start "" "%CHROME_PATH%" --kiosk --start-fullscreen --app=http://localhost:8080/board --disable-infobars --disable-session-crashed-bubble --disable-restore-session-state
 ) else (
     echo Chrome not found. Opening default browser...
     start http://localhost:8080/board
     echo.
     echo Please press F11 for fullscreen mode.
+    echo Page will auto-refresh every minute.
 )
 
 echo.

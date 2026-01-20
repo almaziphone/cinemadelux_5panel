@@ -167,6 +167,7 @@ const currentPremierVideoUrl = computed(() => {
 let updateInterval: number | null = null
 let timeInterval: number | null = null
 let premieresInterval: number | null = null
+let pageRefreshInterval: number | null = null
 
 const displayedFilms = computed(() => {
   return boardData.value.films
@@ -834,10 +835,22 @@ onMounted(() => {
   loadBoard()
   loadPremieres()
   
+  // Автоматически переводим в полноэкранный режим при загрузке
+  if (document.documentElement.requestFullscreen) {
+    document.documentElement.requestFullscreen().catch(() => {
+      // Игнорируем ошибки (например, если пользователь отклонил запрос)
+    })
+  }
+  
   timeInterval = window.setInterval(updateTime, 1000)
   updateInterval = window.setInterval(loadBoard, 30000)
   // Обновляем премьеры каждые 30 секунд
   premieresInterval = window.setInterval(loadPremieres, 30000)
+  
+  // Автоматическое обновление страницы каждую минуту (60000 мс)
+  pageRefreshInterval = window.setInterval(() => {
+    window.location.reload()
+  }, 60000)
 })
 
 onUnmounted(() => {
@@ -849,6 +862,9 @@ onUnmounted(() => {
   }
   if (premieresInterval !== null) {
     clearInterval(premieresInterval)
+  }
+  if (pageRefreshInterval !== null) {
+    clearInterval(pageRefreshInterval)
   }
 })
 </script>
