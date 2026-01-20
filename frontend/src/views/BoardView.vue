@@ -1,61 +1,69 @@
 <template>
   <div class="board-container" ref="containerRef">
     <div class="board-content" :style="boardStyle">
-      <!-- Витрина фильмов -->
-      <main class="films-showcase">
-        <div
-          v-for="film in displayedFilms"
-          :key="film.id"
-          class="film-card"
-          :class="{
-            'film-active': hasActiveShowtime(film),
-            'film-next': hasNextShowtime(film)
-          }"
-        >
-          <!-- Постер фильма слева -->
-          <div class="film-poster">
-            <img
-              v-if="film.posterUrl"
-              :src="film.posterUrl"
-              :alt="film.title"
-              class="poster-image"
-            />
-            <div v-else class="poster-placeholder">
-              <div class="poster-icon">🎬</div>
-            </div>
-          </div>
-
-          <!-- Информация справа -->
-          <div class="film-info">
-            <!-- Название фильма -->
-            <h2 class="film-title">{{ film.title.toUpperCase() }}</h2>
-            
-            <!-- Мета-информация: возраст и формат -->
-            <div class="film-meta">
-              <span class="meta-chip age">{{ film.ageRating }}</span>
-              <span v-if="film.format" class="meta-chip format">{{ film.format }}</span>
-            </div>
-
-            <!-- Времена сеансов чипами -->
-            <div class="showtimes-chips">
-              <div
-                v-for="showtime in film.showtimes"
-                :key="showtime.id"
-                class="showtime-chip"
-                :class="{
-                  'chip-active': isActive(showtime),
-                  'chip-next': isNext(showtime, film.showtimes)
-                }"
-              >
-                {{ showtime.time }}
+      <!-- 5 мониторов с бордерами -->
+      <div
+        v-for="(monitor, index) in monitors"
+        :key="index"
+        class="monitor-frame"
+      >
+        <div class="monitor-content">
+          <div class="films-showcase">
+            <div
+              v-for="film in monitor.films"
+              :key="film.id"
+              class="film-card"
+              :class="{
+                'film-active': hasActiveShowtime(film),
+                'film-next': hasNextShowtime(film)
+              }"
+            >
+              <!-- Постер фильма слева -->
+              <div class="film-poster">
+                <img
+                  v-if="film.posterUrl"
+                  :src="film.posterUrl"
+                  :alt="film.title"
+                  class="poster-image"
+                />
+                <div v-else class="poster-placeholder">
+                  <div class="poster-icon">🎬</div>
+                </div>
               </div>
-              <div v-if="film.showtimes.length === 0" class="no-showtimes">
-                Нет сеансов
+
+              <!-- Информация справа -->
+              <div class="film-info">
+                <!-- Название фильма -->
+                <h2 class="film-title">{{ film.title.toUpperCase() }}</h2>
+                
+                <!-- Мета-информация: возраст и формат -->
+                <div class="film-meta">
+                  <span class="meta-chip age">{{ film.ageRating }}</span>
+                  <span v-if="film.format" class="meta-chip format">{{ film.format }}</span>
+                </div>
+
+                <!-- Времена сеансов чипами -->
+                <div class="showtimes-chips">
+                  <div
+                    v-for="showtime in film.showtimes"
+                    :key="showtime.id"
+                    class="showtime-chip"
+                    :class="{
+                      'chip-active': isActive(showtime),
+                      'chip-next': isNext(showtime, film.showtimes)
+                    }"
+                  >
+                    {{ showtime.time }}
+                  </div>
+                  <div v-if="film.showtimes.length === 0" class="no-showtimes">
+                    Нет сеансов
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   </div>
 </template>
@@ -78,6 +86,24 @@ let timeInterval: number | null = null
 
 const displayedFilms = computed(() => {
   return boardData.value.films
+})
+
+// Распределение фильмов по 5 мониторам (по 4 карточки на монитор)
+const monitors = computed(() => {
+  const films = displayedFilms.value
+  const monitorsCount = 5
+  const filmsPerMonitor = 4
+  const result = []
+  
+  for (let i = 0; i < monitorsCount; i++) {
+    const startIndex = i * filmsPerMonitor
+    const endIndex = startIndex + filmsPerMonitor
+    result.push({
+      films: films.slice(startIndex, endIndex)
+    })
+  }
+  
+  return result
 })
 
 const boardStyle = computed(() => {
@@ -183,17 +209,71 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
   color: #fff;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100%;
+  width: 100%;
+}
+
+.monitor-frame {
+  width: 1920px;
+  height: 1080px;
+  border: 12px solid #00d4ff;
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: 
+    0 0 40px rgba(0, 212, 255, 0.8),
+    0 0 80px rgba(0, 212, 255, 0.4),
+    inset 0 0 30px rgba(0, 0, 0, 0.6),
+    inset 0 0 60px rgba(0, 212, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+
+.monitor-frame::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  border: 2px solid rgba(255, 193, 7, 0.6);
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 2px;
+}
+
+.monitor-frame::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 1px;
+}
+
+.monitor-content {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
+  padding: 20px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 0;
 }
 
 .films-showcase {
-  flex: 1;
+  width: 100%;
+  height: 100%;
   display: grid;
   grid-template-columns: repeat(2, auto);
   grid-auto-rows: 1fr;
   gap: 30px;
-  padding: 60px 40px;
+  padding: 40px;
   overflow: hidden;
   justify-content: start;
   align-items: stretch;
