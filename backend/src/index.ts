@@ -27,7 +27,9 @@ async function start() {
   }, 30 * 60 * 1000);
   
   const fastify = Fastify({
-    logger: true,
+    logger: {
+      level: 'error' // Логируем только ошибки, не логируем запросы
+    },
     bodyLimit: 500 * 1024 * 1024, // 500MB для больших видео файлов
     requestTimeout: 600000 // 10 минут для загрузки больших файлов
   });

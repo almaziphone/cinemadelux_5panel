@@ -13,6 +13,10 @@
             <div class="datetime-content">
               <div class="date-display">{{ currentDate }}</div>
               <div class="time-display">{{ currentTime }}</div>
+              <div class="qr-section">
+                <div class="qr-text">Наш сайт</div>
+                <img :src="qrSiteImage" alt="QR код" class="qr-image" />
+              </div>
             </div>
           </div>
           <!-- Если четвертый монитор пустой, показываем календарь премьер -->
@@ -119,6 +123,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { getBoard, getPremieres, type BoardResponse, type BoardFilm, type BoardShowtime, type Premier } from '../api/board'
+import qrSiteImage from '../data/qr_site.png'
 
 const containerRef = ref<HTMLElement>()
 // Получаем текущую дату в часовом поясе Екатеринбурга
@@ -418,28 +423,18 @@ function hasShowtimesTomorrowOrLater(film: BoardFilm): boolean {
       const showtimeDate = new Date(showtime.startAt)
       const showtimeDateStr = getDateInYekaterinburg(showtimeDate)
       
-      // Отладочная информация
-      if (film.title) {
-        console.log(`Фильм: ${film.title}, Сеанс: ${showtime.startAt}, Дата в ЕКБ: ${showtimeDateStr}, Скрыт: ${showtime.isHidden}, Сегодня: ${todayStr}, Завтра: ${tomorrowStr}, >= завтра: ${showtimeDateStr >= tomorrowStr}`)
-      }
-      
       // Пропускаем скрытые сеансы
       if (showtime.isHidden) continue
       
       // Сравниваем строки дат (лексикографическое сравнение работает для формата YYYY-MM-DD)
       if (showtimeDateStr >= tomorrowStr) {
         foundTomorrow = true
-        console.log(`✓ Найден сеанс на завтра или позже для фильма "${film.title}": ${showtimeDateStr}`)
+        break
       }
     } catch (e) {
       // Если ошибка парсинга даты, пропускаем этот сеанс
-      console.warn('Ошибка парсинга даты сеанса:', showtime.startAt, e)
       continue
     }
-  }
-  
-  if (!foundTomorrow && film.title) {
-    console.log(`✗ Не найдено сеансов на завтра для фильма "${film.title}"`)
   }
   
   return foundTomorrow
@@ -598,17 +593,6 @@ function getNextShowtimePrice(film: BoardFilm): string | null {
 async function loadBoard() {
   try {
     const data = await getBoard()
-    console.log('[BoardView] Получены данные от API:', data)
-    console.log('[BoardView] Дата запроса:', data.date)
-    console.log('[BoardView] Количество фильмов:', data.films.length)
-    data.films.forEach(film => {
-      console.log(`[BoardView] Фильм: ${film.title}, сеансов: ${film.showtimes.length}`)
-      film.showtimes.forEach(st => {
-        const stDate = new Date(st.startAt)
-        const stDateStr = getDateInYekaterinburg(stDate)
-        console.log(`[BoardView]   Сеанс: ${st.startAt} (дата в ЕКБ: ${stDateStr}), скрыт: ${st.isHidden}`)
-      })
-    })
     boardData.value = data
   } catch (error) {
     console.error('Failed to load board:', error)
@@ -1225,6 +1209,7 @@ onUnmounted(() => {
   letter-spacing: 8px;
   font-family: 'Courier New', monospace;
   animation: timePulse 2s ease-in-out infinite;
+  margin-bottom: 60px;
 }
 
 @keyframes timePulse {
@@ -1236,6 +1221,39 @@ onUnmounted(() => {
     opacity: 0.95;
     transform: scale(1.02);
   }
+}
+
+.qr-section {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 60px;
+  margin-top: 40px;
+}
+
+.qr-text {
+  font-size: 96px;
+  font-weight: 700;
+  color: #00d4ff;
+  text-shadow: 
+    0 0 20px rgba(0, 212, 255, 0.8),
+    0 0 40px rgba(0, 212, 255, 0.6);
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.qr-image {
+  width: 450px;
+  height: 450px;
+  object-fit: contain;
+  border: 3px solid rgba(0, 212, 255, 0.5);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 10px;
+  box-shadow: 0 0 30px rgba(0, 212, 255, 0.4);
+  flex-shrink: 0;
 }
 
 /* Календарь премьер */

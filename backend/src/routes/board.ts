@@ -59,8 +59,6 @@ export async function boardRoutes(fastify: FastifyInstance) {
     
     // Получаем все сеансы (только активные фильмы и не скрытые сеансы)
     // Фильтруем по датам в JavaScript с учетом часового пояса Екатеринбурга
-    console.log(`[Board API] Ищем сеансы на даты: ${targetDate} и ${tomorrowDate}`);
-    
     const allShowtimes = db.prepare(`
       SELECT 
         s.id,
@@ -117,12 +115,6 @@ export async function boardRoutes(fastify: FastifyInstance) {
     const showtimes = allShowtimes.filter(s => {
       const showtimeDate = getShowtimeDateInYekaterinburg(s.startAt);
       return showtimeDate === targetDate || showtimeDate === tomorrowDate;
-    });
-    
-    console.log(`[Board API] Всего сеансов в БД: ${allShowtimes.length}, отфильтровано: ${showtimes.length}`);
-    showtimes.forEach(s => {
-      const showtimeDate = getShowtimeDateInYekaterinburg(s.startAt);
-      console.log(`[Board API] Сеанс: ${s.title} - ${s.startAt} (дата в ЕКБ: ${showtimeDate})`);
     });
     
     // Группируем по фильмам
