@@ -36,10 +36,11 @@
                 <!-- Название фильма -->
                 <h2 class="film-title">{{ film.title.toUpperCase() }}</h2>
                 
-                <!-- Мета-информация: возраст и формат -->
+                <!-- Мета-информация: возраст, формат и цена -->
                 <div class="film-meta">
                   <span class="meta-chip age">{{ film.ageRating }}</span>
                   <span v-if="film.format" class="meta-chip format">{{ film.format }}</span>
+                  <span v-if="getPriceRange(film)" class="meta-chip price">{{ getPriceRange(film) }}</span>
                 </div>
 
                 <!-- Времена сеансов чипами -->
@@ -167,6 +168,23 @@ function hasNextShowtime(film: BoardFilm): boolean {
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
   
   return allFutureShowtimes.length > 0 && allFutureShowtimes[0].id === futureShowtimes[0].id
+}
+
+function getPriceRange(film: BoardFilm): string | null {
+  const prices = film.showtimes
+    .map(s => s.priceFrom)
+    .filter((price): price is number => price !== null && price !== undefined)
+  
+  if (prices.length === 0) return null
+  
+  const minPrice = Math.min(...prices)
+  const maxPrice = Math.max(...prices)
+  
+  if (minPrice === maxPrice) {
+    return `${minPrice} ₽`
+  } else {
+    return `от ${minPrice} до ${maxPrice} ₽`
+  }
 }
 
 async function loadBoard() {
@@ -398,6 +416,13 @@ onUnmounted(() => {
   background: rgba(0, 212, 255, 0.3);
   color: #00d4ff;
   border: 2px solid #00d4ff;
+}
+
+.meta-chip.price {
+  background: rgba(76, 175, 80, 0.3);
+  color: #4caf50;
+  border: 2px solid #4caf50;
+  font-weight: 700;
 }
 
 .showtimes-chips {
