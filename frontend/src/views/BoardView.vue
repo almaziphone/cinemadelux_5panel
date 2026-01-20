@@ -8,7 +8,15 @@
         class="monitor-frame"
       >
         <div class="monitor-content">
-          <div class="films-showcase">
+          <!-- Если пятый монитор пустой, показываем дату и время -->
+          <div v-if="index === 4 && monitor.films.length === 0" class="datetime-display">
+            <div class="datetime-content">
+              <div class="date-display">{{ currentDate }}</div>
+              <div class="time-display">{{ currentTime }}</div>
+            </div>
+          </div>
+          <!-- Обычное отображение фильмов -->
+          <div v-else class="films-showcase">
             <div
               v-for="film in monitor.films"
               :key="film.id"
@@ -735,5 +743,57 @@ onUnmounted(() => {
   font-style: italic;
   padding: 12px;
   text-align: center;
+}
+
+/* Отображение даты и времени на пустом пятом мониторе */
+.datetime-display {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
+}
+
+.datetime-content {
+  text-align: center;
+  color: #fff;
+}
+
+.date-display {
+  font-size: 120px;
+  font-weight: 700;
+  color: #00d4ff;
+  text-shadow: 
+    0 0 20px rgba(0, 212, 255, 0.8),
+    0 0 40px rgba(0, 212, 255, 0.6),
+    0 0 60px rgba(0, 212, 255, 0.4);
+  margin-bottom: 60px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+.time-display {
+  font-size: 180px;
+  font-weight: 900;
+  color: #ffc107;
+  text-shadow: 
+    0 0 30px rgba(255, 193, 7, 0.9),
+    0 0 60px rgba(255, 193, 7, 0.7),
+    0 0 90px rgba(255, 193, 7, 0.5);
+  letter-spacing: 8px;
+  font-family: 'Courier New', monospace;
+  animation: timePulse 2s ease-in-out infinite;
+}
+
+@keyframes timePulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.02);
+  }
 }
 </style>
