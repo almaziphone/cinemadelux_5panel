@@ -1051,7 +1051,7 @@ onUnmounted(() => {
 }
 
 .film-title {
-  font-size: 48px;
+  font-size: 36px;
   font-weight: bold;
   color: #fff;
   margin: 0 0 30px 0;
@@ -1145,11 +1145,11 @@ onUnmounted(() => {
 }
 
 .showtime-chip {
-  padding: 16px 24px;
+  padding: 12px 20px;
   background: rgba(255, 255, 255, 0.1);
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 8px;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 600;
   color: #fff;
   transition: all 0.3s ease;
