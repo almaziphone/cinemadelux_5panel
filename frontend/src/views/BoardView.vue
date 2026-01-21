@@ -43,7 +43,7 @@
             </div>
           </div>
           <!-- Обычное отображение фильмов -->
-          <div v-else class="films-showcase" :class="{ 'single-film': monitor.films.length === 1 }">
+          <div v-else class="films-showcase" :class="{ 'single-film': monitor.films.length === 1, 'two-films': monitor.films.length === 2 }">
             <div
               v-for="film in monitor.films"
               :key="film.id"
@@ -1034,6 +1034,41 @@ onUnmounted(() => {
 .films-showcase.single-film {
   grid-template-columns: 1fr;
   justify-content: center;
+}
+
+.films-showcase.two-films .film-card {
+  overflow: visible;
+  position: relative;
+}
+
+.films-showcase.two-films .film-poster {
+  position: relative;
+  z-index: 1;
+}
+
+.films-showcase.two-films .film-info {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  margin-left: -80px;
+  padding-left: 80px;
+}
+
+.films-showcase.two-films .film-title {
+  overflow: visible;
+  text-overflow: clip;
+  display: block;
+  -webkit-line-clamp: unset;
+  -webkit-box-orient: unset;
+  white-space: normal;
+  word-wrap: break-word;
+  position: relative;
+  z-index: 3;
+}
+
+.films-showcase.two-films .future-text {
+  position: relative;
+  z-index: 3;
 }
 
 .film-card {
