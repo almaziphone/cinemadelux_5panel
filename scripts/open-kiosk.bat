@@ -27,6 +27,24 @@ if not defined CHROME (
 
 echo Найден Chrome: "%CHROME%"
 echo Запуск в режиме киоска: %URL%
+echo.
+echo А-а-а... Ждем запуска сети...
+echo.
+
+REM Обратный отсчет 15 секунд
+for /l %%i in (15,-1,1) do (
+  echo Осталось секунд: %%i
+  timeout /t 1 /nobreak >nul
+  cls
+  echo Найден Chrome: "%CHROME%"
+  echo Запуск в режиме киоска: %URL%
+  echo.
+  echo А-а-а... Ждем запуска сети...
+  echo.
+)
+
+echo Запускаем Chrome!
+timeout /t 1 /nobreak >nul
 
 REM ВАЖНО: путь к exe в кавычках!
 start "" "%CHROME%" --kiosk --start-fullscreen "%URL%" ^
