@@ -282,6 +282,8 @@ function getShowtimeClass(showtime: BoardShowtime, filmShowtimes: BoardShowtime[
 
 function getActiveShowtimes(showtimes: BoardShowtime[]): BoardShowtime[] {
   const now = new Date()
+  // Получаем текущую дату в часовом поясе Екатеринбурга
+  const todayStr = getCurrentDateInYekaterinburg()
   // Получаем завтрашнюю дату в часовом поясе Екатеринбурга для фильтрации
   const tomorrowStr = getTomorrowDateInYekaterinburg()
   
@@ -292,12 +294,30 @@ function getActiveShowtimes(showtimes: BoardShowtime[]): BoardShowtime[] {
     // Показываем только сеансы, которые еще не закончились
     if (endAt <= now) return false
     
-    // Исключаем сеансы на завтра или позже - они показываются отдельно как "Завтра"
     const showtimeDate = new Date(showtime.startAt)
     const showtimeDateStr = getDateInYekaterinburg(showtimeDate)
-    if (showtimeDateStr >= tomorrowStr) return false
     
-    return true
+    // Показываем сеансы текущего дня
+    if (showtimeDateStr === todayStr) return true
+    
+    // Показываем сеансы после полуночи до 4:00 утра следующего дня
+    // Если сеанс завтра, проверяем час
+    if (showtimeDateStr === tomorrowStr) {
+      // Получаем час сеанса в часовом поясе Екатеринбурга
+      const hourFormatter = new Intl.DateTimeFormat('ru-RU', {
+        timeZone: 'Asia/Yekaterinburg',
+        hour: '2-digit',
+        hour12: false
+      })
+      const hourParts = hourFormatter.formatToParts(showtimeDate)
+      const hour = parseInt(hourParts.find(p => p.type === 'hour')?.value || '0')
+      
+      // Если сеанс до 4:00 утра, показываем его (это ночные сеансы текущего дня)
+      if (hour >= 0 && hour < 4) return true
+    }
+    
+    // Исключаем все остальные сеансы на завтра или позже
+    return false
   })
 }
 

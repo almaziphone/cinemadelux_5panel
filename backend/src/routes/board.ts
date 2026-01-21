@@ -141,6 +141,7 @@ export async function boardRoutes(fastify: FastifyInstance) {
     }
     
     // Фильтруем сеансы по датам в часовом поясе Екатеринбурга с дедупликацией
+    // Показываем текущий день + сеансы после полуночи до 4:00 утра следующего дня
     const seenIds = new Set<number>();
     const showtimes = allShowtimes.filter(s => {
       // Пропускаем дубликаты по ID
@@ -149,13 +150,33 @@ export async function boardRoutes(fastify: FastifyInstance) {
       }
       
       const showtimeDate = getShowtimeDateInYekaterinburg(s.startAt);
-      const matches = showtimeDate === targetDate || showtimeDate === tomorrowDate;
       
-      if (matches) {
+      // Показываем сеансы текущего дня
+      if (showtimeDate === targetDate) {
         seenIds.add(s.id);
+        return true;
       }
       
-      return matches;
+      // Показываем сеансы после полуночи до 4:00 утра следующего дня
+      if (showtimeDate === tomorrowDate) {
+        const date = new Date(s.startAt);
+        // Получаем час в часовом поясе Екатеринбурга
+        const hourFormatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'Asia/Yekaterinburg',
+          hour: '2-digit',
+          hour12: false
+        });
+        const hourParts = hourFormatter.formatToParts(date);
+        const hour = parseInt(hourParts.find(p => p.type === 'hour')?.value || '0');
+        
+        // Если сеанс до 4:00 утра, показываем его (это ночные сеансы текущего дня)
+        if (hour >= 0 && hour < 4) {
+          seenIds.add(s.id);
+          return true;
+        }
+      }
+      
+      return false;
     });
     
     // Группируем по фильмам с дедупликацией по ID сеанса и по времени
