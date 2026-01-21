@@ -179,30 +179,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const endDate = new Date(startDate.getTime() + film.durationMin * 60 * 1000);
     const endAt = endDate.toISOString();
     
-    // Проверка конфликтов
-    const conflicts = db.prepare(`
-      SELECT id FROM showtimes 
-      WHERE hallId = ? 
-        AND isHidden = 0
-        AND (
-          (startAt < ? AND endAt > ?) OR
-          (startAt < ? AND endAt > ?) OR
-          (startAt >= ? AND endAt <= ?)
-        )
-    `).all(
-      data.hallId,
-      data.startAt, data.startAt,
-      endAt, endAt,
-      data.startAt, endAt
-    ) as { id: number }[];
-    
-    if (conflicts.length > 0) {
-      return reply.code(409).send({ 
-        error: 'Showtime conflict',
-        message: 'Сеанс пересекается с существующим сеансом в этом зале'
-      });
-    }
-    
     const result = db.prepare(`
       INSERT INTO showtimes (hallId, filmId, startAt, endAt, priceFrom, note, isHidden)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -249,32 +225,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const startDate = new Date(startAt);
     const endDate = new Date(startDate.getTime() + film.durationMin * 60 * 1000);
     const endAt = endDate.toISOString();
-    
-    // Проверка конфликтов (исключая текущий сеанс)
-    const conflicts = db.prepare(`
-      SELECT id FROM showtimes 
-      WHERE hallId = ? 
-        AND id != ?
-        AND isHidden = 0
-        AND (
-          (startAt < ? AND endAt > ?) OR
-          (startAt < ? AND endAt > ?) OR
-          (startAt >= ? AND endAt <= ?)
-        )
-    `).all(
-      hallId,
-      Number(id),
-      startAt, startAt,
-      endAt, endAt,
-      startAt, endAt
-    ) as { id: number }[];
-    
-    if (conflicts.length > 0) {
-      return reply.code(409).send({ 
-        error: 'Showtime conflict',
-        message: 'Сеанс пересекается с существующим сеансом в этом зале'
-      });
-    }
     
     db.prepare(`
       UPDATE showtimes 
