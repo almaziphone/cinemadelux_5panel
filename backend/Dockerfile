@@ -8,7 +8,8 @@ WORKDIR /app/frontend
 
 # Копируем и собираем frontend
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+# npm install работает и с lock файлом, и без него
+RUN npm install
 
 COPY frontend ./
 RUN npm run build
@@ -20,7 +21,8 @@ WORKDIR /app/backend
 
 # Копируем package.json и устанавливаем зависимости
 COPY backend/package.json backend/package-lock.json* ./
-RUN npm ci
+# npm install работает и с lock файлом, и без него
+RUN npm install
 
 # Копируем исходный код backend
 COPY backend ./
@@ -37,7 +39,8 @@ WORKDIR /app
 COPY --from=backend-builder /app/backend/package.json ./backend/
 COPY --from=backend-builder /app/backend/package-lock.json* ./backend/
 WORKDIR /app/backend
-RUN npm ci --only=production
+# npm install работает и с lock файлом, и без него
+RUN npm install --only=production
 
 # Копируем собранный backend код
 COPY --from=backend-builder /app/backend/dist ./dist

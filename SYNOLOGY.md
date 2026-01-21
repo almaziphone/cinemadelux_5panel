@@ -155,9 +155,20 @@ synopkg update
 
 ### Способ 2: Через веб-интерфейс Docker (DSM 6.x)
 
+> **⚠️ Важно:** Веб-интерфейс Docker на Synology **не поддерживает импорт docker-compose файлов**. Используйте SSH (Способ 1) или создайте контейнер вручную:
+
+**Сначала соберите образ через SSH:**
+```bash
+ssh admin@<IP-Synology>
+cd /volume1/cinemadelux_5panel
+sudo docker-compose -f docker-compose.synology.yml build
+```
+
+**Затем создайте контейнер через веб-интерфейс:**
+
 1. Откройте **Docker** в DSM
 2. Перейдите на вкладку **Образ**
-3. Найдите образ `cinema-app:latest`
+3. Найдите собранный образ (обычно `cinemadelux_5panel_app` или похожее имя)
 4. Нажмите **Запустить**
 5. Настройте контейнер:
    - **Имя контейнера**: `cinema-app`
@@ -166,9 +177,13 @@ synopkg update
      - Контейнер: `8080`
      - Локальный: `8080` (или другой свободный порт)
    - **Volumes** (тома):
-     - Папка: `/volume1/docker/cinema-app/data`
+     - Папка: `/volume1/cinemadelux_5panel/data` (создайте заранее через File Station)
      - Путь монтирования: `/app/data`
+   - **Переменные окружения**:
+     - `NODE_ENV` = `production`
 6. Нажмите **Применить** и **Запустить**
+
+> **Подробная инструкция:** См. [SYNOLOGY-WEB-INTERFACE.md](./SYNOLOGY-WEB-INTERFACE.md)
 
 ### Способ 3: Через Container Manager (DSM 7.0+)
 
