@@ -10,7 +10,7 @@ services:
       - "8080:8080"
     volumes:
       # Абсолютный путь для Synology (измените /volume1 на ваш том, если другой)
-      - /volume1/docker/cinema-app/data:/app/data
+      - /volume1/docker/cinemadelux_5panel/data:/app/data
     environment:
       - NODE_ENV=production
     restart: unless-stopped
