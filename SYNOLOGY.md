@@ -43,6 +43,7 @@ scp -r backend frontend docker-compose.synology.yml .dockerignore package.json a
 
 ```bash
 ssh admin@<IP-адрес-Synology>
+ssh alma@10.80.19.145
 ```
 
 ### Шаг 2: Перейдите в директорию проекта
