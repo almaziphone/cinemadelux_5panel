@@ -5,6 +5,9 @@ setlocal
 REM Куда открываем
 set "URL=http://10.80.19.145:8080/board"
 
+echo Ожидание 15 секунд (загрузка сети)...
+timeout /t 15 /nobreak >nul
+
 REM 1) Пробуем найти Chrome через PATH
 set "CHROME="
 for /f "delims=" %%I in ('where chrome.exe 2^>nul') do (
@@ -27,26 +30,7 @@ if not defined CHROME (
 
 echo Найден Chrome: "%CHROME%"
 echo Запуск в режиме киоска: %URL%
-echo.
-echo А-а-а... Ждем запуска сети...
-echo.
 
-REM Обратный отсчет 15 секунд
-for /l %%i in (15,-1,1) do (
-  echo Осталось секунд: %%i
-  timeout /t 1 /nobreak >nul
-  cls
-  echo Найден Chrome: "%CHROME%"
-  echo Запуск в режиме киоска: %URL%
-  echo.
-  echo А-а-а... Ждем запуска сети...
-  echo.
-)
-
-echo Запускаем Chrome!
-timeout /t 1 /nobreak >nul
-
-REM ВАЖНО: путь к exe в кавычках!
 start "" "%CHROME%" --kiosk --start-fullscreen "%URL%" ^
   --disable-infobars --disable-session-crashed-bubble --disable-restore-session-state
 
