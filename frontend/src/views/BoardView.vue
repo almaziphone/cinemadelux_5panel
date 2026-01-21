@@ -22,6 +22,9 @@
                     @loadeddata="handleVideoLoaded"
                     @error="handleVideoError"
                     @canplay="handleVideoCanPlay"
+                    @timeupdate="handleVideoTimeUpdate"
+                    @stalled="handleVideoStalled"
+                    @waiting="handleVideoWaiting"
                     muted
                     playsinline
                   ></video>
@@ -40,7 +43,7 @@
             </div>
           </div>
           <!-- Обычное отображение фильмов -->
-          <div v-else class="films-showcase">
+          <div v-else class="films-showcase" :class="{ 'single-film': monitor.films.length === 1 }">
             <div
               v-for="film in monitor.films"
               :key="film.id"
@@ -170,6 +173,9 @@ let updateInterval: number | null = null
 let timeInterval: number | null = null
 let premieresInterval: number | null = null
 let pageRefreshInterval: number | null = null
+let videoProgressCheckInterval: number | null = null
+let lastVideoTime: number = 0
+let lastVideoTimeCheck: number = 0
 
 const displayedFilms = computed(() => {
   return boardData.value.films
@@ -665,6 +671,29 @@ async function loadPremieres() {
     
     const hasChanged = countChanged || hasDeleted || hasAdded || hasModified
     
+    // Если список не изменился, проверяем состояние текущего видео
+    if (!hasChanged && premieres.value.length > 0) {
+      const video = getVideoElement()
+      if (video) {
+        // Проверяем, не зависло ли видео или не закончилось ли оно
+        if (video.ended || (video.duration > 0 && video.currentTime >= video.duration - 0.1)) {
+          // Видео закончилось, но событие ended не сработало
+          handleVideoEnded()
+          return
+        }
+        // Проверяем, не зависло ли видео (время не меняется)
+        if (!video.paused && !video.ended) {
+          const now = Date.now()
+          if (lastVideoTime === video.currentTime && now - lastVideoTimeCheck > 3000) {
+            // Видео зависло
+            console.warn('Видео зависло при обновлении списка, переключаемся')
+            handleVideoEnded()
+            return
+          }
+        }
+      }
+    }
+    
     // Если список изменился, обновляем и перезапускаем
     if (hasChanged) {
       // Сохраняем информацию о текущем ролике до обновления
@@ -726,10 +755,18 @@ async function loadPremieres() {
 function startPremierPlayback() {
   if (premieres.value.length === 0) return
   
-  // Устанавливаем первый индекс
-  currentPremierIndex.value = 0
+  // НЕ сбрасываем индекс, если он уже установлен (чтобы не начинать с начала при обновлении)
+  // Только если индекс выходит за границы, сбрасываем на 0
+  if (currentPremierIndex.value >= premieres.value.length) {
+    currentPremierIndex.value = 0
+  }
+  
   // Сбрасываем флаг автоматического запуска
   shouldAutoPlayNext.value = false
+  
+  // Сбрасываем отслеживание времени
+  lastVideoTime = 0
+  lastVideoTimeCheck = Date.now()
   
   // Ждем немного для инициализации видео элемента и обновления DOM
   setTimeout(() => {
@@ -760,6 +797,8 @@ function startPremierPlayback() {
     }
     
     video.currentTime = 0
+    lastVideoTime = 0
+    lastVideoTimeCheck = Date.now()
     video.play().catch(() => {
       // Ошибка воспроизведения
     })
@@ -794,6 +833,10 @@ function handleVideoEnded() {
   // Останавливаем текущее видео
   video.pause()
   video.currentTime = 0
+  
+  // Сбрасываем отслеживание времени
+  lastVideoTime = 0
+  lastVideoTimeCheck = Date.now()
   
   // Вычисляем следующий индекс (циклическое переключение)
   const nextIdx = (currentPremierIndex.value + 1) % premieres.value.length
@@ -853,7 +896,79 @@ function handleVideoCanPlay() {
 }
 
 function handleVideoError() {
-  // Ошибка загрузки видео
+  // Ошибка загрузки видео - переключаемся на следующее
+  console.error('Ошибка загрузки видео, переключаемся на следующее')
+  setTimeout(() => {
+    handleVideoEnded()
+  }, 500)
+}
+
+function handleVideoTimeUpdate(event: Event) {
+  const video = event.target as HTMLVideoElement
+  if (!video) return
+  
+  const currentTime = video.currentTime
+  const duration = video.duration
+  
+  // Обновляем время последней проверки
+  const now = Date.now()
+  lastVideoTime = currentTime
+  lastVideoTimeCheck = now
+  
+  // Проверяем, не достиг ли видео конца (с небольшой погрешностью)
+  if (duration > 0 && currentTime >= duration - 0.5) {
+    // Видео почти закончилось, но событие ended не сработало
+    // Принудительно переключаемся
+    setTimeout(() => {
+      if (video.currentTime >= duration - 0.1) {
+        handleVideoEnded()
+      }
+    }, 100)
+  }
+}
+
+function handleVideoStalled() {
+  // Видео зависло при загрузке
+  console.warn('Видео зависло при загрузке')
+  const video = getVideoElement()
+  if (video) {
+    // Пробуем перезагрузить
+    video.load()
+  }
+}
+
+function handleVideoWaiting() {
+  // Видео ожидает загрузки данных
+  // Это нормально, но если долго ждет, может быть проблема
+}
+
+function checkVideoProgress() {
+  const video = getVideoElement()
+  if (!video || premieres.value.length === 0) return
+  
+  // Проверяем, не зависло ли видео
+  const now = Date.now()
+  const currentTime = video.currentTime
+  
+  // Если видео играет, но время не меняется более 3 секунд - зависло
+  if (!video.paused && !video.ended) {
+    if (lastVideoTime === currentTime && now - lastVideoTimeCheck > 3000) {
+      console.warn('Видео зависло, переключаемся на следующее')
+      handleVideoEnded()
+      return
+    }
+  }
+  
+  // Если видео закончилось, но событие ended не сработало
+  if (video.ended && !video.paused) {
+    handleVideoEnded()
+    return
+  }
+  
+  // Проверяем, не достиг ли видео конца
+  if (video.duration > 0 && video.currentTime >= video.duration - 0.1 && !video.ended) {
+    handleVideoEnded()
+  }
 }
 
 onMounted(() => {
@@ -873,6 +988,9 @@ onMounted(() => {
   // Обновляем премьеры с интервалом из конфига
   premieresInterval = window.setInterval(loadPremieres, PREMIERES_REFRESH_INTERVAL_MS)
   
+  // Проверяем прогресс видео каждую секунду для обнаружения зависаний
+  videoProgressCheckInterval = window.setInterval(checkVideoProgress, 1000)
+  
   // Автоматическое обновление страницы (если включено в конфиге)
   if (BOARD_REFRESH_INTERVAL_MINUTES > 0) {
     const refreshIntervalMs = BOARD_REFRESH_INTERVAL_MINUTES * 60 * 1000
@@ -891,6 +1009,9 @@ onUnmounted(() => {
   }
   if (premieresInterval !== null) {
     clearInterval(premieresInterval)
+  }
+  if (videoProgressCheckInterval !== null) {
+    clearInterval(videoProgressCheckInterval)
   }
   if (pageRefreshInterval !== null) {
     clearInterval(pageRefreshInterval)
@@ -981,6 +1102,11 @@ onUnmounted(() => {
   align-items: stretch;
 }
 
+.films-showcase.single-film {
+  grid-template-columns: 1fr;
+  justify-content: center;
+}
+
 .film-card {
   width: 100%;
   max-width: 900px;
@@ -995,6 +1121,10 @@ onUnmounted(() => {
   transition: all 0.3s ease;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   overflow: hidden;
+}
+
+.films-showcase.single-film .film-card {
+  max-width: 100%;
 }
 
 .film-card:hover {
