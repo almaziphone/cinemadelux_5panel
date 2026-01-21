@@ -1,6 +1,6 @@
 # Docker инструкции
 
-> **Для развертывания на Synology Rackstation см. [SYNOLOGY.md](./SYNOLOGY.md) или [SYNOLOGY-QUICKSTART.md](./SYNOLOGY-QUICKSTART.md)**
+> **Для развертывания на Synology Rackstation см. [SYNOLOGY.md](./SYNOLOGY.md)**
 
 ## Создание Docker-образа
 
