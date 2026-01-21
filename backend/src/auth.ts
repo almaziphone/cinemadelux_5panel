@@ -6,7 +6,11 @@ const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 часа
 
 export function createSession(userId: number): string {
   const sessionId = randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
+  // Используем формат SQLite datetime для совместимости
+  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS)
+    .toISOString()
+    .replace('T', ' ')
+    .replace(/\.\d{3}Z$/, '');
   
   db.prepare('INSERT INTO sessions (id, userId, expiresAt) VALUES (?, ?, ?)')
     .run(sessionId, userId, expiresAt);
@@ -15,9 +19,10 @@ export function createSession(userId: number): string {
 }
 
 export function getSession(sessionId: string): { userId: number } | null {
+  // Используем datetime('now') для сравнения с expiresAt в формате SQLite
   const session = db.prepare(`
     SELECT userId FROM sessions 
-    WHERE id = ? AND expiresAt > datetime('now')
+    WHERE id = ? AND datetime(expiresAt) > datetime('now')
   `).get(sessionId) as { userId: number } | undefined;
   
   if (!session) {
@@ -32,7 +37,7 @@ export function deleteSession(sessionId: string) {
 }
 
 export function cleanupExpiredSessions() {
-  db.prepare("DELETE FROM sessions WHERE expiresAt <= datetime('now')").run();
+  db.prepare("DELETE FROM sessions WHERE datetime(expiresAt) <= datetime('now')").run();
 }
 
 export async function requireAuth(

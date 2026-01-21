@@ -31,6 +31,12 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to, from, next) => {
+  // Пропускаем проверку, если переходим на страницу логина
+  if (to.path === '/admin/login') {
+    next()
+    return
+  }
+  
   if (to.meta.requiresAuth) {
     const isAuthenticated = await checkAuth()
     if (!isAuthenticated) {

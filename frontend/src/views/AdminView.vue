@@ -856,8 +856,14 @@ const showtimeFilters = ref({
 async function loadUser() {
   try {
     user.value = await getMe()
-  } catch {
-    router.push('/admin/login')
+  } catch (err: any) {
+    // Редиректим только при 401 (Unauthorized), не при других ошибках
+    if (err.response?.status === 401) {
+      router.push('/admin/login')
+    } else {
+      // Для других ошибок просто не обновляем user
+      console.error('Failed to load user:', err)
+    }
   }
 }
 

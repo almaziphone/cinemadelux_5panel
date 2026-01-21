@@ -130,7 +130,12 @@ export async function kinopoiskRoutes(fastify: FastifyInstance) {
       fastify.log.info(`Successfully processed film: ${film.title} (ID: ${film.id})`);
       return { film };
     } catch (error: any) {
-      fastify.log.error('Get film by ID error:', error);
+      fastify.log.error({
+        msg: 'Get film by ID error',
+        error: error.message || String(error),
+        stack: error.stack,
+        filmId: id,
+      });
       
       // Если это ошибка "не найдено", возвращаем 404
       if (error.message && (error.message.includes('Not found') || error.message.includes('not found'))) {
@@ -140,17 +145,9 @@ export async function kinopoiskRoutes(fastify: FastifyInstance) {
         });
       }
       
-      // Если 404 от API
-      if (response && response.status === 404) {
-        return reply.code(404).send({
-          error: 'Film not found',
-          message: `Фильм с ID ${id} не найден. Попробуйте поиск по названию.`,
-        });
-      }
-      
       return reply.code(500).send({
         error: 'Failed to get film',
-        message: error.message || 'Unknown error',
+        message: error.message || String(error) || 'Unknown error',
       });
     }
   });

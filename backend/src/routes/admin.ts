@@ -526,18 +526,28 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ error: 'Premier not found' });
     }
 
-    // Если удаляется старое видео (заменяется на новое), удаляем файл
-    if (data.videoUrl && data.videoUrl !== existing.videoUrl) {
+    // Если удаляется старое видео (заменяется на новое или удаляется полностью), удаляем файл
+    const isVideoRemoved = !data.videoUrl || data.videoUrl === '';
+    const isVideoReplaced = data.videoUrl && data.videoUrl !== existing.videoUrl;
+    
+    if ((isVideoRemoved || isVideoReplaced) && existing.videoUrl) {
       // Если старое видео было локальным файлом, удаляем его
-      if (existing.videoUrl.startsWith('/api/videos/')) {
+      if (typeof existing.videoUrl === 'string' && existing.videoUrl.startsWith('/api/videos/')) {
         const oldFileName = existing.videoUrl.replace('/api/videos/', '');
         const oldFilePath = join(videosDir, oldFileName);
+        
+        fastify.log.info(`Attempting to delete old video file during update: ${oldFilePath}`);
+        
         if (existsSync(oldFilePath)) {
           try {
             unlinkSync(oldFilePath);
-          } catch (err) {
-            // Игнорируем ошибки удаления
+            fastify.log.info(`Successfully deleted old video file: ${oldFilePath}`);
+          } catch (err: any) {
+            fastify.log.error(`Failed to delete old video file ${oldFilePath}:`, err?.message || err);
+            // Продолжаем обновление даже если старый файл не удалился
           }
+        } else {
+          fastify.log.warn(`Old video file not found at path: ${oldFilePath}`);
         }
       }
     }
@@ -570,16 +580,25 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
 
     // Удаляем файл, если это локальный файл
-    if (existing.videoUrl.startsWith('/api/videos/')) {
+    if (existing.videoUrl && typeof existing.videoUrl === 'string' && existing.videoUrl.startsWith('/api/videos/')) {
       const fileName = existing.videoUrl.replace('/api/videos/', '');
       const filePath = join(videosDir, fileName);
+      
+      fastify.log.info(`Attempting to delete video file: ${filePath}`);
+      
       if (existsSync(filePath)) {
         try {
           unlinkSync(filePath);
-        } catch (err) {
-          // Игнорируем ошибки удаления
+          fastify.log.info(`Successfully deleted video file: ${filePath}`);
+        } catch (err: any) {
+          fastify.log.error(`Failed to delete video file ${filePath}:`, err?.message || err);
+          // Продолжаем удаление записи из БД даже если файл не удалился
         }
+      } else {
+        fastify.log.warn(`Video file not found at path: ${filePath}`);
       }
+    } else if (existing.videoUrl) {
+      fastify.log.info(`Video URL is not a local file, skipping file deletion: ${existing.videoUrl}`);
     }
 
     // Удаляем ролик

@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { ADMIN_USERNAME, ADMIN_PASSWORD } from './config';
 
 const dbDir = join(process.cwd(), 'data');
 if (!existsSync(dbDir)) {
@@ -105,13 +106,16 @@ export function initDatabase() {
     }
   }
 
-  // Создание дефолтного админа, если его нет
-  const usersCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
-  if (usersCount.count === 0) {
-    // Пароль: admin (в реальном проекте нужно использовать bcrypt)
-    // Для простоты используем простой хеш
-    const adminPassword = 'admin'; // В продакшене должен быть хеш
-    db.prepare('INSERT INTO users (username, passwordHash) VALUES (?, ?)').run('admin', adminPassword);
+  // Создание или обновление дефолтного админа
+  // Пароль берется из config.ts (в продакшене должен быть хеш)
+  const existingAdmin = db.prepare('SELECT id FROM users WHERE username = ?').get(ADMIN_USERNAME) as { id: number } | undefined;
+  
+  if (existingAdmin) {
+    // Обновляем пароль существующего админа
+    db.prepare('UPDATE users SET passwordHash = ? WHERE username = ?').run(ADMIN_PASSWORD, ADMIN_USERNAME);
+  } else {
+    // Создаем нового админа, если его нет
+    db.prepare('INSERT INTO users (username, passwordHash) VALUES (?, ?)').run(ADMIN_USERNAME, ADMIN_PASSWORD);
   }
 
   // Таблица премьер (роликов)

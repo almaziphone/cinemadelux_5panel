@@ -96,8 +96,37 @@ export async function boardRoutes(fastify: FastifyInstance) {
     }>;
     
     // Функция для получения даты сеанса в часовом поясе Екатеринбурга
+    // Сеансы после полуночи (0:00 - 3:59) относятся к предыдущему дню
     function getShowtimeDateInYekaterinburg(startAt: string): string {
       const date = new Date(startAt);
+      
+      // Получаем час в часовом поясе Екатеринбурга
+      const hourFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Yekaterinburg',
+        hour: '2-digit',
+        hour12: false
+      });
+      const hourParts = hourFormatter.formatToParts(date);
+      const hour = parseInt(hourParts.find(p => p.type === 'hour')?.value || '0');
+      
+      // Если сеанс между 0:00 и 3:59, относим к предыдущему дню
+      if (hour >= 0 && hour < 4) {
+        const prevDate = new Date(date);
+        prevDate.setDate(prevDate.getDate() - 1);
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'Asia/Yekaterinburg',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        const parts = formatter.formatToParts(prevDate);
+        const year = parts.find(p => p.type === 'year')?.value;
+        const month = parts.find(p => p.type === 'month')?.value;
+        const day = parts.find(p => p.type === 'day')?.value;
+        return `${year}-${month}-${day}`;
+      }
+      
+      // Для остальных сеансов используем обычную дату
       const formatter = new Intl.DateTimeFormat('en-US', {
         timeZone: 'Asia/Yekaterinburg',
         year: 'numeric',
@@ -111,25 +140,55 @@ export async function boardRoutes(fastify: FastifyInstance) {
       return `${year}-${month}-${day}`;
     }
     
-    // Фильтруем сеансы по датам в часовом поясе Екатеринбурга
+    // Фильтруем сеансы по датам в часовом поясе Екатеринбурга с дедупликацией
+    const seenIds = new Set<number>();
     const showtimes = allShowtimes.filter(s => {
+      // Пропускаем дубликаты по ID
+      if (seenIds.has(s.id)) {
+        return false;
+      }
+      
       const showtimeDate = getShowtimeDateInYekaterinburg(s.startAt);
-      return showtimeDate === targetDate || showtimeDate === tomorrowDate;
+      const matches = showtimeDate === targetDate || showtimeDate === tomorrowDate;
+      
+      if (matches) {
+        seenIds.add(s.id);
+      }
+      
+      return matches;
     });
     
-    // Группируем по фильмам
+    // Группируем по фильмам с дедупликацией по ID сеанса и по времени
     const filmMap = new Map<number, BoardFilm>();
+    const addedShowtimeIds = new Set<number>(); // Для отслеживания уже добавленных сеансов по ID
+    const filmShowtimeKeys = new Map<number, Set<string>>(); // Для отслеживания времени сеансов для каждого фильма
     
     showtimes.forEach(s => {
+      // Пропускаем дубликаты по ID
+      if (addedShowtimeIds.has(s.id)) {
+        return;
+      }
+      
+      const startDate = new Date(s.startAt);
+      const time = startDate.toLocaleTimeString('ru-RU', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Yekaterinburg'
+      });
+      
+      // Проверяем, не добавлен ли уже сеанс с таким же временем для этого фильма
+      if (!filmShowtimeKeys.has(s.filmId)) {
+        filmShowtimeKeys.set(s.filmId, new Set());
+      }
+      const timeKey = `${time}_${s.hallId}`; // Учитываем и время, и зал
+      
+      // Если сеанс с таким же временем и залом уже есть, пропускаем
+      if (filmShowtimeKeys.get(s.filmId)!.has(timeKey)) {
+        return;
+      }
+      
       if (!filmMap.has(s.filmId)) {
-        const startDate = new Date(s.startAt);
-        const time = startDate.toLocaleTimeString('ru-RU', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: false,
-          timeZone: 'Asia/Yekaterinburg'
-        });
-        
         filmMap.set(s.filmId, {
           id: s.filmId,
           title: s.title,
@@ -149,16 +208,10 @@ export async function boardRoutes(fastify: FastifyInstance) {
             note: s.note
           }]
         });
+        addedShowtimeIds.add(s.id);
+        filmShowtimeKeys.get(s.filmId)!.add(timeKey);
       } else {
         const film = filmMap.get(s.filmId)!;
-        const startDate = new Date(s.startAt);
-        const time = startDate.toLocaleTimeString('ru-RU', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: false,
-          timeZone: 'Asia/Yekaterinburg'
-        });
-        
         film.showtimes.push({
           id: s.id,
           startAt: s.startAt,
@@ -169,6 +222,8 @@ export async function boardRoutes(fastify: FastifyInstance) {
           priceFrom: s.priceFrom,
           note: s.note
         });
+        addedShowtimeIds.add(s.id);
+        filmShowtimeKeys.get(s.filmId)!.add(timeKey);
       }
     });
     

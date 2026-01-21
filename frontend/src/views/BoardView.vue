@@ -124,6 +124,7 @@
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { getBoard, getPremieres, type BoardResponse, type BoardFilm, type BoardShowtime, type Premier } from '../api/board'
 import qrSiteImage from '../data/qr_site.png'
+import { BOARD_REFRESH_INTERVAL_MINUTES, BOARD_DATA_REFRESH_INTERVAL_MS, PREMIERES_REFRESH_INTERVAL_MS } from '../config'
 
 const containerRef = ref<HTMLElement>()
 // Получаем текущую дату в часовом поясе Екатеринбурга
@@ -366,14 +367,31 @@ function getActiveShowtimes(showtimes: BoardShowtime[]): BoardShowtime[] {
 }
 
 // Получает дату в часовом поясе Екатеринбурга в формате YYYY-MM-DD
+// Сеансы после полуночи (0:00 - 3:59) относятся к предыдущему дню
 function getDateInYekaterinburg(date: Date): string {
+  // Получаем час в часовом поясе Екатеринбурга
+  const hourFormatter = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Asia/Yekaterinburg',
+    hour: '2-digit',
+    hour12: false
+  })
+  const hourParts = hourFormatter.formatToParts(date)
+  const hour = parseInt(hourParts.find(p => p.type === 'hour')?.value || '0')
+  
+  // Если сеанс между 0:00 и 3:59, относим к предыдущему дню
+  let targetDate = date
+  if (hour >= 0 && hour < 4) {
+    targetDate = new Date(date)
+    targetDate.setDate(targetDate.getDate() - 1)
+  }
+  
   const formatter = new Intl.DateTimeFormat('ru-RU', {
     timeZone: 'Asia/Yekaterinburg',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
   })
-  const parts = formatter.formatToParts(date)
+  const parts = formatter.formatToParts(targetDate)
   const year = parts.find(p => p.type === 'year')?.value
   const month = parts.find(p => p.type === 'month')?.value
   const day = parts.find(p => p.type === 'day')?.value
@@ -843,14 +861,17 @@ onMounted(() => {
   }
   
   timeInterval = window.setInterval(updateTime, 1000)
-  updateInterval = window.setInterval(loadBoard, 30000)
-  // Обновляем премьеры каждые 30 секунд
-  premieresInterval = window.setInterval(loadPremieres, 30000)
+  updateInterval = window.setInterval(loadBoard, BOARD_DATA_REFRESH_INTERVAL_MS)
+  // Обновляем премьеры с интервалом из конфига
+  premieresInterval = window.setInterval(loadPremieres, PREMIERES_REFRESH_INTERVAL_MS)
   
-  // Автоматическое обновление страницы каждую минуту (60000 мс)
-  pageRefreshInterval = window.setInterval(() => {
-    window.location.reload()
-  }, 60000)
+  // Автоматическое обновление страницы (если включено в конфиге)
+  if (BOARD_REFRESH_INTERVAL_MINUTES > 0) {
+    const refreshIntervalMs = BOARD_REFRESH_INTERVAL_MINUTES * 60 * 1000
+    pageRefreshInterval = window.setInterval(() => {
+      window.location.reload()
+    }, refreshIntervalMs)
+  }
 })
 
 onUnmounted(() => {
