@@ -76,21 +76,19 @@
                   <div class="film-meta-row">
                     <span class="meta-chip age">{{ film.ageRating }}</span>
                     <span v-if="film.format" class="meta-chip format">{{ film.format }}</span>
-                    <template v-if="getNoShowtimesMessage(film) !== 'завтра'">
-                      <span 
-                        v-if="getNextShowtimePrice(film)" 
-                        class="meta-chip price"
-                        :class="{ 'price-blinking': hasUpcomingShowtime(film) }"
-                      >
-                        {{ getNextShowtimePrice(film) }}
-                      </span>
-                      <span 
-                        v-else-if="getPriceRange(film)" 
-                        class="meta-chip price"
-                      >
-                        {{ getPriceRange(film) }}
-                      </span>
-                    </template>
+                    <span 
+                      v-if="getNextShowtimePrice(film)" 
+                      class="meta-chip price"
+                      :class="{ 'price-blinking': hasUpcomingShowtime(film) }"
+                    >
+                      {{ getNextShowtimePrice(film) }}
+                    </span>
+                    <span 
+                      v-else-if="getPriceRange(film)" 
+                      class="meta-chip price"
+                    >
+                      {{ getPriceRange(film) }}
+                    </span>
                   </div>
                   <div 
                     v-if="getNoShowtimesMessage(film) === 'завтра'" 
