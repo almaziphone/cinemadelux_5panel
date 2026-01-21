@@ -30,7 +30,7 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async (to, _from, next) => {
   // Пропускаем проверку, если переходим на страницу логина
   if (to.path === '/admin/login') {
     next()

@@ -129,7 +129,6 @@ import { getBoard, getPremieres, type BoardResponse, type BoardFilm, type BoardS
 import qrSiteImage from '../data/qr_site.png'
 import { BOARD_REFRESH_INTERVAL_MINUTES, BOARD_DATA_REFRESH_INTERVAL_MS, PREMIERES_REFRESH_INTERVAL_MS } from '../config'
 
-const containerRef = ref<HTMLElement>()
 // Получаем текущую дату в часовом поясе Екатеринбурга
 function getCurrentDateInYekaterinburg(): string {
   const now = new Date()
@@ -202,36 +201,6 @@ const monitors = computed(() => {
 // Проверяем, занято ли 4 экрана фильмами (16 или больше фильмов)
 const isFourMonitorsOccupied = computed(() => {
   return displayedFilms.value.length >= 16
-})
-
-// Вычисляем ближайший сеанс один раз для всех фильмов
-// Используем currentTime для реактивности - будет пересчитываться каждую секунду
-const nearestShowtimeTime = computed(() => {
-  // Используем currentTime для реактивности обновления
-  const _ = currentTime.value
-  
-  // Проверяем, что данные загружены
-  if (!boardData.value || !boardData.value.films || boardData.value.films.length === 0) {
-    return null
-  }
-  
-  const now = new Date()
-  const allFutureShowtimes = boardData.value.films
-    .flatMap(f => f.showtimes || [])
-    .filter(s => {
-      if (!s || s.isHidden) return false
-      const sStart = new Date(s.startAt)
-      const sEnd = new Date(s.endAt)
-      // Сеанс должен быть в будущем и еще не закончиться
-      return sStart > now && sEnd > now
-    })
-    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
-  
-  if (allFutureShowtimes.length === 0) return null
-  
-  // Возвращаем время ближайшего сеанса
-  const nearestTime = new Date(allFutureShowtimes[0].startAt).getTime()
-  return nearestTime
 })
 
 const boardStyle = computed(() => {
@@ -311,50 +280,6 @@ function getShowtimeClass(showtime: BoardShowtime, filmShowtimes: BoardShowtime[
   
   // Все остальные предстоящие - голубые
   return 'chip-upcoming'
-}
-
-function isNext(showtime: BoardShowtime, allShowtimes: BoardShowtime[]): boolean {
-  // Игнорируем скрытые сеансы
-  if (showtime.isHidden) return false
-  
-  const now = new Date()
-  const showtimeStart = new Date(showtime.startAt)
-  
-  // Ближайший сеанс должен быть в будущем
-  if (showtimeStart <= now) return false
-  
-  // Используем вычисленное ближайшее время
-  const nearestTime = nearestShowtimeTime.value
-  if (nearestTime === null) return false
-  
-  const showtimeTime = showtimeStart.getTime()
-  
-  // Проверяем, начинается ли этот сеанс в самое ближайшее время
-  // (все сеансы, начинающиеся в одно и то же ближайшее время, должны быть оранжевыми)
-  return showtimeTime === nearestTime
-}
-
-function isUpcoming(showtime: BoardShowtime): boolean {
-  const now = new Date()
-  const showtimeStart = new Date(showtime.startAt)
-  
-  // Игнорируем скрытые сеансы
-  if (showtime.isHidden) return false
-  
-  // Если сеанс уже прошел или идет сейчас, не показываем как предстоящий
-  if (showtimeStart <= now) return false
-  
-  // Используем вычисленное ближайшее время
-  const nearestTime = nearestShowtimeTime.value
-  if (nearestTime === null) return false
-  
-  // Если этот сеанс начинается в самое ближайшее время, не применяем класс upcoming (он будет chip-next)
-  if (showtimeStart.getTime() === nearestTime) {
-    return false
-  }
-  
-  // Все остальные предстоящие сеансы - голубые
-  return true
 }
 
 function getActiveShowtimes(showtimes: BoardShowtime[]): BoardShowtime[] {
@@ -443,7 +368,6 @@ function hasShowtimesTomorrowOrLater(film: BoardFilm): boolean {
   
   // Получаем завтрашнюю дату в часовом поясе Екатеринбурга
   const tomorrowStr = getTomorrowDateInYekaterinburg()
-  const todayStr = getCurrentDateInYekaterinburg()
   
   let foundTomorrow = false
   
@@ -597,11 +521,6 @@ function hasUpcomingShowtime(film: BoardFilm): boolean {
   // Проверяем, есть ли у этого фильма самый ближайший сеанс
   const nextShowtime = allFutureShowtimes[0]
   return film.showtimes.some(s => !s.isHidden && s.id === nextShowtime.id)
-}
-
-function hasFutureShowtimes(film: BoardFilm): boolean {
-  // Используем общую функцию для консистентности
-  return hasShowtimesTomorrowOrLater(film)
 }
 
 function getNextShowtimePrice(film: BoardFilm): string | null {

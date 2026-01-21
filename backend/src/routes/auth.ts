@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
-import { db } from '../db';
-import { createSession, deleteSession } from '../auth';
+import { db } from '../db.js';
+import { createSession, deleteSession } from '../auth.js';
 
 export async function authRoutes(fastify: FastifyInstance) {
   // Логин
@@ -51,7 +51,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.code(401).send({ error: 'Unauthorized' });
     }
     
-    const { getSession } = await import('../auth');
+    const { getSession } = await import('../auth.js');
     const session = getSession(sessionId);
     
     if (!session) {

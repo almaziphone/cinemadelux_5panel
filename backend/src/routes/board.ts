@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
-import { db } from '../db';
-import { BoardResponse, BoardFilm, BoardShowtime, Premier } from '../types';
+import { db } from '../db.js';
+import { BoardResponse, BoardFilm, BoardShowtime, Premier } from '../types.js';
 
 export async function boardRoutes(fastify: FastifyInstance) {
   // Функция для получения текущей даты в часовом поясе Екатеринбурга

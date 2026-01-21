@@ -31,11 +31,13 @@ vite.config.*.timestamp-*
 
 # Database
 backend/data/
+data/
 *.db
 *.db-shm
 *.db-wal
 *.sqlite
 *.sqlite3
+cinema.db
 
 # Logs
 *.log
@@ -176,3 +178,13 @@ storybook-static
 # Temporary folders
 tmp/
 temp/
+data/temp/
+
+# Video files
+data/videos/
+*.mp4
+*.webm
+*.ogg
+*.mov
+*.avi
+*.mkv

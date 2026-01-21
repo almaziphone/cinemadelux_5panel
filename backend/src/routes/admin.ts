@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
-import { db } from '../db';
-import { requireAuth } from '../auth';
-import { Film, Showtime, Hall, Premier } from '../types';
+import { db, getDataDir } from '../db.js';
+import { requireAuth } from '../auth.js';
+import { Film, Showtime, Hall, Premier } from '../types.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, createWriteStream } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
@@ -328,7 +328,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
   // ===== PREMIERES =====
   
   // Директория для хранения загруженных видео
-  const videosDir = join(process.cwd(), 'data', 'videos');
+  const videosDir = join(getDataDir(), 'videos');
   if (!existsSync(videosDir)) {
     mkdirSync(videosDir, { recursive: true });
   }
@@ -340,17 +340,23 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
   // Загрузка видео файла
   fastify.post('/api/admin/premieres/upload', async (request, reply) => {
-    fastify.log.info('Upload request received, headers:', {
-      'content-type': request.headers['content-type'],
-      'content-length': request.headers['content-length']
+    fastify.log.info({
+      msg: 'Upload request received',
+      headers: {
+        'content-type': request.headers['content-type'],
+        'content-length': request.headers['content-length']
+      }
     });
     
     try {
       const data = await request.file();
-      fastify.log.info('File data received:', {
-        filename: data?.filename,
-        mimetype: data?.mimetype,
-        encoding: data?.encoding
+      fastify.log.info({
+        msg: 'File data received',
+        file: {
+          filename: data?.filename,
+          mimetype: data?.mimetype,
+          encoding: data?.encoding
+        }
       });
       
       if (!data) {

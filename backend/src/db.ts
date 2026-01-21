@@ -1,15 +1,30 @@
-import Database from 'better-sqlite3';
-import { join } from 'path';
+import Database, { type Database as DatabaseType } from 'better-sqlite3';
+import { join, dirname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
-import { ADMIN_USERNAME, ADMIN_PASSWORD } from './config';
+import { fileURLToPath } from 'url';
+import { ADMIN_USERNAME, ADMIN_PASSWORD } from './config.js';
 
-const dbDir = join(process.cwd(), 'data');
+// Получаем путь к директории backend
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+// База данных в корне проекта
+// В production: dist/index.js -> dist/ -> backend/ -> корень/ -> data/
+// В dev: src/db.ts -> src/ -> backend/ -> корень/ -> data/
+const backendDir = dirname(__dirname); // Получаем backend/ из dist/ или src/
+const dataDir = join(backendDir, '..', 'data'); // backend/ -> корень/ -> data/
+
+// Экспортируем функцию для получения пути к data директории
+export function getDataDir(): string {
+  return dataDir;
+}
+
+const dbDir = dataDir;
 if (!existsSync(dbDir)) {
   mkdirSync(dbDir, { recursive: true });
 }
 
 const dbPath = join(dbDir, 'cinema.db');
-export const db = new Database(dbPath);
+export const db: DatabaseType = new Database(dbPath);
 
 // Включаем foreign keys
 db.pragma('foreign_keys = ON');

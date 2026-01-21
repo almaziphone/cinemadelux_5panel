@@ -5,12 +5,12 @@ import staticFiles from '@fastify/static';
 import multipart from '@fastify/multipart';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
-import { initDatabase, db } from './db';
-import { authRoutes } from './routes/auth';
-import { adminRoutes } from './routes/admin';
-import { boardRoutes } from './routes/board';
-import { kinopoiskRoutes } from './routes/kinopoisk';
-import { cleanupExpiredSessions } from './auth';
+import { initDatabase, db, getDataDir } from './db.js';
+import { authRoutes } from './routes/auth.js';
+import { adminRoutes } from './routes/admin.js';
+import { boardRoutes } from './routes/board.js';
+import { kinopoiskRoutes } from './routes/kinopoisk.js';
+import { cleanupExpiredSessions } from './auth.js';
 
 const PORT = 8080;
 
@@ -47,7 +47,7 @@ async function start() {
   });
 
   // Создаем директорию для видео, если её нет
-  const videosDir = join(process.cwd(), 'data', 'videos');
+  const videosDir = join(getDataDir(), 'videos');
   if (!existsSync(videosDir)) {
     mkdirSync(videosDir, { recursive: true });
   }

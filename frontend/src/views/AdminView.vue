@@ -104,7 +104,7 @@
                 <td>{{ getHallName(showtime.hallId) }}</td>
                 <td>{{ getFilmTitle(showtime.filmId) }}</td>
                 <td>{{ formatDateTime(showtime.startAt) }}</td>
-                <td>{{ formatDateTime(showtime.endAt) }}</td>
+                <td>{{ showtime.endAt ? formatDateTime(showtime.endAt) : '-' }}</td>
                 <td>{{ showtime.priceFrom || '-' }}</td>
                 <td>{{ showtime.isHidden ? 'Да' : 'Нет' }}</td>
                 <td>
@@ -243,7 +243,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(price, index) in pricesList" :key="index">
+              <tr v-for="(_price, index) in pricesList" :key="index">
                 <td>{{ index + 1 }}</td>
                 <td>
                   <input
@@ -569,7 +569,7 @@
                 :src="getVideoUrl(premierForm.videoUrl)" 
                 controls 
                 style="max-width: 100%; max-height: 200px; background: #000;"
-                @error="(e) => { premierError = 'Ошибка загрузки видео. Проверьте формат файла.' }"
+                @error="(_e) => { premierError = 'Ошибка загрузки видео. Проверьте формат файла.' }"
               ></video>
               <button type="button" @click="premierForm.videoUrl = ''; if (videoFileInput) videoFileInput.value = ''" class="delete-button" style="margin-top: 10px;">Удалить видео</button>
             </div>
@@ -615,7 +615,7 @@ import {
   type Hall,
   type Premier
 } from '../api/admin'
-import { getFilmById, type KinopoiskFilm } from '../api/kinopoisk'
+import { getFilmById } from '../api/kinopoisk'
 
 const router = useRouter()
 const user = ref<any>(null)
@@ -1479,12 +1479,12 @@ function handleVideoError(event: Event, premierId: number) {
   console.error('Video error for premier', premierId, ':', errorMessage, 'URL:', video.src, 'Error object:', error)
 }
 
-function handleVideoLoaded(event: Event, premierId: number) {
+function handleVideoLoaded(_event: Event, premierId: number) {
   // Видео успешно загружено
   delete videoErrors.value[premierId]
 }
 
-function handleVideoCanPlay(event: Event, premierId: number) {
+function handleVideoCanPlay(_event: Event, premierId: number) {
   // Видео готово к воспроизведению
   delete videoErrors.value[premierId]
 }

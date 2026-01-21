@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { db } from './db';
+import { db } from './db.js';
 import { randomBytes } from 'crypto';
 
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 часа

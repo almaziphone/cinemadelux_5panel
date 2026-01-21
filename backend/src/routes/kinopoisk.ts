@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
-import { KINOPOISK_API_KEY, KINOPOISK_API_BASE } from '../config';
-import { requireAuth } from '../auth';
+import { KINOPOISK_API_KEY, KINOPOISK_API_BASE } from '../config.js';
+import { requireAuth } from '../auth.js';
 
 interface KinopoiskMovieResponse {
   id: number;
@@ -68,7 +68,7 @@ export async function kinopoiskRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const rawData = await response.json();
+      const rawData = await response.json() as any;
       fastify.log.info(`Film data keys: ${Object.keys(rawData).join(', ')}`);
       
       // Обрабатываем разные форматы ответа
