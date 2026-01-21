@@ -8,19 +8,8 @@
         class="monitor-frame"
       >
         <div class="monitor-content">
-          <!-- Если пятый монитор пустой, показываем дату и время -->
-          <div v-if="index === 4 && monitor.films.length === 0" class="datetime-display">
-            <div class="datetime-content">
-              <div class="date-display">{{ currentDate }}</div>
-              <div class="time-display">{{ currentTime }}</div>
-              <div class="qr-section">
-                <div class="qr-text">Наш сайт</div>
-                <img :src="qrSiteImage" alt="QR код" class="qr-image" />
-              </div>
-            </div>
-          </div>
-          <!-- Если четвертый монитор пустой, показываем календарь премьер -->
-          <div v-else-if="index === 3 && monitor.films.length === 0 && premieres.length > 0" class="premieres-display">
+          <!-- Если четвертый монитор пустой и есть премьеры, показываем "СКОРО В КИНО" -->
+          <div v-if="index === 3 && monitor.films.length === 0 && premieres.length > 0" class="premieres-display">
             <div class="premieres-content">
               <h2 class="premieres-title">СКОРО В КИНО</h2>
               <div class="premieres-video-container">
@@ -36,6 +25,17 @@
                     muted
                     playsinline
                   ></video>
+              </div>
+            </div>
+          </div>
+          <!-- Если пятый монитор пустой, показываем дату и время -->
+          <div v-else-if="index === 4 && monitor.films.length === 0" class="datetime-display">
+            <div class="datetime-content">
+              <div class="date-display">{{ currentDate }}</div>
+              <div class="time-display">{{ currentTime }}</div>
+              <div class="qr-section">
+                <div class="qr-text">Наш сайт</div>
+                <img :src="qrSiteImage" alt="QR код" class="qr-image" />
               </div>
             </div>
           </div>
@@ -155,6 +155,7 @@ const currentDate = ref('')
 const premieres = ref<Premier[]>([])
 const currentPremierIndex = ref(0)
 const premierVideoRef = ref<HTMLVideoElement | null>(null)
+const shouldAutoPlayNext = ref(false) // Флаг для автоматического запуска следующего видео
 
 // Вычисляемое свойство для текущего URL видео
 const currentPremierVideoUrl = computed(() => {
@@ -722,6 +723,8 @@ function startPremierPlayback() {
   
   // Устанавливаем первый индекс
   currentPremierIndex.value = 0
+  // Сбрасываем флаг автоматического запуска
+  shouldAutoPlayNext.value = false
   
   // Ждем немного для инициализации видео элемента и обновления DOM
   setTimeout(() => {
@@ -790,56 +793,56 @@ function handleVideoEnded() {
   // Вычисляем следующий индекс (циклическое переключение)
   const nextIdx = (currentPremierIndex.value + 1) % premieres.value.length
   
+  // Устанавливаем флаг для автоматического запуска следующего видео
+  shouldAutoPlayNext.value = true
+  
   // Обновляем индекс - это автоматически изменит src через computed
   currentPremierIndex.value = nextIdx
   
-  // Ждем обновления src и запускаем следующее видео
-  setTimeout(() => {
+  // Принудительно загружаем новое видео
+  // Видео запустится автоматически через handleVideoCanPlay когда будет готово
+  nextTick(() => {
     const nextVideo = getVideoElement()
-    if (!nextVideo) {
-      // Если видео элемент не найден, пробуем еще раз
-      setTimeout(() => handleVideoEnded(), 300)
-      return
+    if (nextVideo) {
+      nextVideo.currentTime = 0
+      nextVideo.load()
     }
-    
-    if (typeof nextVideo.play !== 'function') {
-      return
-    }
-    
-    // Сбрасываем время и загружаем новое видео
-    nextVideo.currentTime = 0
-    nextVideo.load() // Принудительно загружаем новое видео
-    
-    // Пробуем запустить воспроизведение
-    const playPromise = nextVideo.play()
-    if (playPromise) {
-      playPromise
-        .then(() => {
-          // Видео успешно запущено
-        })
-        .catch(() => {
-          // Если не удалось запустить, пробуем еще раз
-          setTimeout(() => {
-            nextVideo.play().catch(() => {
-              // Если и повторная попытка не удалась, пробуем переключиться на следующее
-              setTimeout(() => handleVideoEnded(), 500)
-            })
-          }, 300)
-        })
-    }
-  }, 200)
+  })
 }
 
 function handleVideoLoaded() {
-  // Видео загружено
+  // Видео загружено - если нужно автоматически запустить, делаем это
+  if (shouldAutoPlayNext.value) {
+    const video = getVideoElement()
+    if (video && video.paused) {
+      // Ждем немного, чтобы убедиться что видео полностью готово
+      setTimeout(() => {
+        handleVideoCanPlay()
+      }, 100)
+    }
+  }
 }
 
 function handleVideoCanPlay() {
   const video = getVideoElement()
   if (video) {
     // Если это первое видео и оно готово, запускаем его
-    if (currentPremierIndex.value === 0 && video.paused) {
+    if (currentPremierIndex.value === 0 && video.paused && !shouldAutoPlayNext.value) {
       video.play().catch(() => {})
+    }
+    // Если установлен флаг автоматического запуска, запускаем следующее видео
+    else if (shouldAutoPlayNext.value && video.paused) {
+      shouldAutoPlayNext.value = false
+      video.play().catch((error) => {
+        // Если не удалось запустить, пробуем еще раз через небольшую задержку
+        console.error('Ошибка воспроизведения видео:', error)
+        setTimeout(() => {
+          video.play().catch(() => {
+            // Если и повторная попытка не удалась, переключаемся на следующее
+            setTimeout(() => handleVideoEnded(), 500)
+          })
+        }, 300)
+      })
     }
   }
 }
