@@ -174,8 +174,20 @@ let videoProgressCheckInterval: number | null = null
 let lastVideoTime: number = 0
 let lastVideoTimeCheck: number = 0
 
+// Проверяет, есть ли у фильма хотя бы один видимый сеанс (сегодня или завтра)
+function hasAnyVisibleShowtimes(film: BoardFilm): boolean {
+  if (!film.showtimes || film.showtimes.length === 0) {
+    return false
+  }
+  
+  // Проверяем, есть ли хотя бы один не скрытый сеанс
+  const visibleShowtimes = film.showtimes.filter(showtime => !showtime.isHidden)
+  return visibleShowtimes.length > 0
+}
+
 const displayedFilms = computed(() => {
-  return boardData.value.films
+  // Фильтруем фильмы: показываем только те, у которых есть хотя бы один видимый сеанс
+  return boardData.value.films.filter(film => hasAnyVisibleShowtimes(film))
 })
 
 // Распределение фильмов по 5 мониторам (по 4 карточки на монитор)
