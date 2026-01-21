@@ -8,8 +8,8 @@
         class="monitor-frame"
       >
         <div class="monitor-content">
-          <!-- Если занято 4 экрана и это пятый экран, показываем "СКОРО В КИНО" -->
-          <div v-if="index === 4 && isFourMonitorsOccupied && premieres.length > 0" class="premieres-display">
+          <!-- ПРИОРИТЕТ 1: Если пятый монитор (панель 4) и есть премьеры, показываем "СКОРО В КИНО" (всегда в конце) -->
+          <div v-if="index === 4 && premieres.length > 0" class="premieres-display">
             <div class="premieres-content">
               <h2 class="premieres-title">СКОРО В КИНО</h2>
               <div class="premieres-video-container">
@@ -28,28 +28,8 @@
               </div>
             </div>
           </div>
-          <!-- Если четвертый монитор пустой и НЕ занято 4 экрана, и есть премьеры, показываем "СКОРО В КИНО" -->
-          <div v-else-if="index === 3 && monitor.films.length === 0 && !isFourMonitorsOccupied && premieres.length > 0" class="premieres-display">
-            <div class="premieres-content">
-              <h2 class="premieres-title">СКОРО В КИНО</h2>
-              <div class="premieres-video-container">
-                  <video
-                    v-if="currentPremierVideoUrl"
-                    ref="premierVideoRef"
-                    :src="currentPremierVideoUrl"
-                    class="premier-video"
-                    @ended="handleVideoEnded"
-                    @loadeddata="handleVideoLoaded"
-                    @error="handleVideoError"
-                    @canplay="handleVideoCanPlay"
-                    muted
-                    playsinline
-                  ></video>
-              </div>
-            </div>
-          </div>
-          <!-- Если пятый монитор пустой и НЕ занято 4 экрана, показываем дату и время -->
-          <div v-else-if="index === 4 && monitor.films.length === 0 && !isFourMonitorsOccupied" class="datetime-display">
+          <!-- ПРИОРИТЕТ 2: Если четвертый монитор (панель 3) пустой и НЕ занято 4 экрана, показываем дату и время -->
+          <div v-else-if="index === 3 && monitor.films.length === 0 && !isFourMonitorsOccupied" class="datetime-display">
             <div class="datetime-content">
               <div class="date-display">{{ currentDate }}</div>
               <div class="time-display">{{ currentTime }}</div>
