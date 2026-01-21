@@ -122,10 +122,13 @@
       <div v-if="activeTab === 'schedule'" class="tab-content">
         <div class="section-header">
           <h2>Расписание на неделю</h2>
-          <div class="week-selector">
-            <button @click="previousWeek" class="week-nav-button">← Предыдущая</button>
-            <span class="week-label">{{ currentWeekLabel }}</span>
-            <button @click="nextWeek" class="week-nav-button">Следующая →</button>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <button @click="openCopyScheduleModal" class="copy-schedule-button">📋 Копировать расписание</button>
+            <div class="week-selector">
+              <button @click="previousWeek" class="week-nav-button">← Предыдущая</button>
+              <span class="week-label">{{ currentWeekLabel }}</span>
+              <button @click="nextWeek" class="week-nav-button">Следующая →</button>
+            </div>
           </div>
         </div>
         
@@ -141,8 +144,11 @@
             </thead>
             <tbody>
               <tr v-for="day in weekDays" :key="day.date">
-                <td class="day-cell">
-                  <div class="day-name">{{ day.name }}</div>
+                <td class="day-cell" :class="{ 'week-start': day.name === 'Четверг' }">
+                  <div class="day-name">
+                    {{ day.name }}
+                    <span v-if="day.name === 'Четверг'" class="week-start-badge">Начало недели</span>
+                  </div>
                   <div class="day-date">{{ day.date }}</div>
                 </td>
                 <td
@@ -494,6 +500,45 @@
       </div>
     </div>
 
+    <!-- Модальное окно копирования расписания -->
+    <div v-if="copyScheduleModalOpen" class="modal-overlay" @click.self="closeCopyScheduleModal">
+      <div class="modal">
+        <h3>Копировать расписание на неделю</h3>
+        <form @submit.prevent="copyScheduleToWeek" class="modal-form">
+          <div class="form-group">
+            <label>Выберите день-источник (откуда копировать) *</label>
+            <select v-model="copyScheduleForm.sourceDate" required>
+              <option value="">-- Выберите день --</option>
+              <option v-for="day in weekDays" :key="day.date" :value="day.date">
+                {{ day.name }} ({{ day.date }})
+              </option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Выберите целевые дни (куда копировать) *</label>
+            <div class="checkbox-group">
+              <label v-for="day in weekDays" :key="day.date" class="checkbox-label">
+                <input
+                  type="checkbox"
+                  :value="day.date"
+                  v-model="copyScheduleForm.targetDates"
+                  :disabled="day.date === copyScheduleForm.sourceDate"
+                />
+                <span>{{ day.name }} ({{ day.date }})</span>
+              </label>
+            </div>
+            <div v-if="copyScheduleError" class="error-message">{{ copyScheduleError }}</div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" @click="closeCopyScheduleModal" class="cancel-button">Отмена</button>
+            <button type="submit" class="save-button" :disabled="copyScheduleLoading">
+              {{ copyScheduleLoading ? 'Копирование...' : 'Копировать' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Модальное окно премьеры -->
     <div v-if="premierModalOpen" class="modal-overlay" @click.self="closePremierModal">
       <div class="modal">
@@ -599,6 +644,15 @@ const uploadingVideo = ref(false)
 const videoFileInput = ref<HTMLInputElement | null>(null)
 const videoErrors = ref<Record<number, string>>({})
 
+// Копирование расписания
+const copyScheduleModalOpen = ref(false)
+const copyScheduleForm = ref({
+  sourceDate: '',
+  targetDates: [] as string[]
+})
+const copyScheduleError = ref('')
+const copyScheduleLoading = ref(false)
+
 // Загружаем сохраненный таб из localStorage или используем 'films' по умолчанию
 const savedTab = localStorage.getItem('adminActiveTab') as 'films' | 'showtimes' | 'schedule' | 'halls' | 'prices' | 'premieres' | null
 const defaultTab: 'films' | 'showtimes' | 'schedule' | 'halls' | 'prices' | 'premieres' = savedTab && ['films', 'showtimes', 'schedule', 'halls', 'prices', 'premieres'].includes(savedTab) 
@@ -636,19 +690,28 @@ const weekShowtimes = ref<any[]>([])
 
 function getWeekStart(date: Date): Date {
   const d = new Date(date)
-  const day = d.getDay()
-  // Четверг = 4, сдвигаем к началу недели (четверг)
-  // Если день < 4 (пн-ср), отнимаем дни до четверга прошлой недели
-  // Если день >= 4 (чт-вс), отнимаем дни до четверга текущей недели
+  const day = d.getDay() // 0 = воскресенье, 1 = понедельник, ..., 4 = четверг, ..., 6 = суббота
+  
+  // Кинопрокатная неделя начинается с четверга (day = 4)
+  // Вычисляем количество дней до ближайшего четверга (включая текущий день, если это четверг)
   let diff: number
-  if (day === 0) { // Воскресенье
+  if (day === 0) { // Воскресенье - до четверга прошлой недели (3 дня назад)
     diff = -3
-  } else if (day < 4) { // Понедельник-среда
-    diff = day + 3 // До четверга прошлой недели
-  } else { // Четверг-суббота
-    diff = day - 4 // До четверга текущей недели
+  } else if (day === 1) { // Понедельник - до четверга прошлой недели (4 дня назад)
+    diff = -4
+  } else if (day === 2) { // Вторник - до четверга прошлой недели (5 дней назад)
+    diff = -5
+  } else if (day === 3) { // Среда - до четверга прошлой недели (6 дней назад)
+    diff = -6
+  } else if (day === 4) { // Четверг - начало недели (0 дней)
+    diff = 0
+  } else if (day === 5) { // Пятница - до четверга текущей недели (1 день назад)
+    diff = -1
+  } else { // Суббота - до четверга текущей недели (2 дня назад)
+    diff = -2
   }
-  d.setDate(d.getDate() - diff)
+  
+  d.setDate(d.getDate() + diff)
   d.setHours(0, 0, 0, 0)
   return d
 }
@@ -709,13 +772,14 @@ const weekDays = computed(() => getWeekDays(currentWeekStart.value))
 const currentWeekLabel = computed(() => {
   const start = currentWeekStart.value
   const end = new Date(start)
-  end.setDate(start.getDate() + 6)
+  end.setDate(start.getDate() + 6) // Конец недели - среда следующей недели
   
   const formatDate = (d: Date) => {
     return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
   }
   
-  return `${formatDate(start)} - ${formatDate(end)}`
+  // Показываем, что неделя начинается с четверга
+  return `${formatDate(start)} (чт) - ${formatDate(end)} (ср)`
 })
 
 function previousWeek() {
@@ -1425,6 +1489,105 @@ function handleVideoCanPlay(event: Event, premierId: number) {
   delete videoErrors.value[premierId]
 }
 
+// Функции для копирования расписания
+function openCopyScheduleModal() {
+  copyScheduleForm.value = {
+    sourceDate: '',
+    targetDates: []
+  }
+  copyScheduleError.value = ''
+  copyScheduleModalOpen.value = true
+}
+
+function closeCopyScheduleModal() {
+  copyScheduleModalOpen.value = false
+  copyScheduleForm.value = {
+    sourceDate: '',
+    targetDates: []
+  }
+  copyScheduleError.value = ''
+}
+
+async function copyScheduleToWeek() {
+  copyScheduleError.value = ''
+  
+  if (!copyScheduleForm.value.sourceDate) {
+    copyScheduleError.value = 'Выберите день-источник'
+    return
+  }
+  
+  if (!copyScheduleForm.value.targetDates || copyScheduleForm.value.targetDates.length === 0) {
+    copyScheduleError.value = 'Выберите хотя бы один целевой день'
+    return
+  }
+  
+  copyScheduleLoading.value = true
+  
+  try {
+    // Получаем все сеансы из дня-источника
+    const sourceShowtimes = weekShowtimes.value.filter(s => {
+      const showtimeDateObj = new Date(s.startAt)
+      const showtimeDateStr = showtimeDateObj.toLocaleDateString('en-CA', { timeZone: 'Asia/Yekaterinburg' })
+      return showtimeDateStr === copyScheduleForm.value.sourceDate && !s.isHidden
+    })
+    
+    if (sourceShowtimes.length === 0) {
+      copyScheduleError.value = 'В выбранном дне-источнике нет сеансов для копирования'
+      copyScheduleLoading.value = false
+      return
+    }
+    
+    // Для каждого целевого дня создаем копии всех сеансов
+    let copiedCount = 0
+    for (const targetDate of copyScheduleForm.value.targetDates) {
+      for (const sourceShowtime of sourceShowtimes) {
+        // Получаем время из исходного сеанса
+        const sourceDateTime = new Date(sourceShowtime.startAt)
+        const hours = sourceDateTime.getHours()
+        const minutes = sourceDateTime.getMinutes()
+        const seconds = sourceDateTime.getSeconds()
+        
+        // Создаем новую дату с временем из исходного сеанса
+        const targetDateTime = new Date(targetDate)
+        targetDateTime.setHours(hours, minutes, seconds, 0)
+        
+        // Конвертируем в ISO строку с учетом часового пояса
+        const isoDateTime = targetDateTime.toISOString()
+        
+        // Создаем новый сеанс
+        const newShowtime: Showtime = {
+          hallId: sourceShowtime.hallId,
+          filmId: sourceShowtime.filmId,
+          startAt: isoDateTime,
+          priceFrom: sourceShowtime.priceFrom,
+          note: sourceShowtime.note,
+          isHidden: sourceShowtime.isHidden
+        }
+        
+        try {
+          await createShowtime(newShowtime)
+          copiedCount++
+        } catch (err: any) {
+          console.error('Ошибка при создании сеанса:', err)
+          // Продолжаем копирование даже при ошибке одного сеанса
+        }
+      }
+    }
+    
+    // Обновляем расписание
+    await loadWeekShowtimes()
+    
+    // Закрываем модальное окно и показываем сообщение об успехе
+    closeCopyScheduleModal()
+    alert(`Успешно скопировано ${copiedCount} сеансов на ${copyScheduleForm.value.targetDates.length} день(дней)`)
+  } catch (err: any) {
+    copyScheduleError.value = err.response?.data?.message || err.response?.data?.error || 'Ошибка при копировании расписания'
+    console.error('Ошибка копирования расписания:', err)
+  } finally {
+    copyScheduleLoading.value = false
+  }
+}
+
 function getVideoUrl(url: string): string {
   // Если URL уже полный (начинается с http:// или https://), возвращаем как есть
   if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -1650,6 +1813,52 @@ onMounted(async () => {
   text-align: center;
 }
 
+.copy-schedule-button {
+  padding: 10px 20px;
+  background: #9c27b0;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.copy-schedule-button:hover {
+  background: #7b1fa2;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .schedule-table-container {
   overflow-x: auto;
   overflow-y: auto;
@@ -1693,6 +1902,20 @@ onMounted(async () => {
   text-align: center;
   font-weight: 600;
   min-width: 120px;
+}
+
+.day-cell.week-start {
+  background: #e3f2fd;
+  border-left: 3px solid #2196f3;
+}
+
+.week-start-badge {
+  display: block;
+  font-size: 10px;
+  color: #1976d2;
+  font-weight: normal;
+  margin-top: 4px;
+  font-style: italic;
 }
 
 .day-name {
