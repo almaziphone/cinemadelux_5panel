@@ -6,7 +6,7 @@
 
 // Автообновление страницы панели (в минутах)
 // Установите 0 для отключения автообновления
-export const BOARD_REFRESH_INTERVAL_MINUTES = 0;
+export const BOARD_REFRESH_INTERVAL_MINUTES = 5;
 
 // Автообновление данных панели (в миллисекундах)
 export const BOARD_DATA_REFRESH_INTERVAL_MS = 30 * 1000; // 30 секунд
