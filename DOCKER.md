@@ -1,5 +1,41 @@
 # Docker инструкции
 
+> **Для развертывания на Synology Rackstation см. [SYNOLOGY.md](./SYNOLOGY.md) или [SYNOLOGY-QUICKSTART.md](./SYNOLOGY-QUICKSTART.md)**
+
+## Создание Docker-образа
+
+Есть два способа создать Docker-образ:
+
+### Способ 1: Через Docker Compose (рекомендуется)
+
+```bash
+# Сборка образа
+docker-compose build
+
+# Сборка с пересозданием кэша (если нужно)
+docker-compose build --no-cache
+
+# Сборка и сразу запуск
+docker-compose up -d --build
+```
+
+### Способ 2: Через Docker напрямую
+
+```bash
+# Сборка образа с тегом
+docker build -t cinema-app:latest -f backend/Dockerfile .
+
+# Просмотр созданных образов
+docker images | grep cinema-app
+
+# Запуск контейнера из образа
+docker run -d \
+  --name cinema-app \
+  -p 8080:8080 \
+  -v ./data:/app/data \
+  cinema-app:latest
+```
+
 ## Быстрый старт
 
 ### Сборка и запуск
