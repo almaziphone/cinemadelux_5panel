@@ -1071,6 +1071,21 @@ onUnmounted(() => {
   z-index: 3;
 }
 
+.films-showcase.two-films .film-meta {
+  position: relative;
+  z-index: 3;
+}
+
+.films-showcase.two-films .film-meta-row {
+  position: relative;
+  z-index: 3;
+}
+
+.films-showcase.two-films .meta-chip {
+  position: relative;
+  z-index: 3;
+}
+
 .film-card {
   width: 100%;
   max-width: 900px;
