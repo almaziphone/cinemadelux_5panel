@@ -3,11 +3,44 @@ import { db, getDataDir } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { Film, Showtime, Hall, Premier } from '../types.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, createWriteStream } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { pipeline } from 'stream/promises';
 
+// Путь к файлу цен - храним в директории данных (как БД), чтобы работало на всех платформах и в Docker
+// Используем getDataDir() для получения пути к /app/data/ (или ./data/ в dev)
+const pricesPath = join(getDataDir(), 'prices.json');
+
+// Функция для миграции со старого пути (frontend/src/data/prices.json) на новый
+function migratePricesFromOldPath() {
+  // Старый путь (для обратной совместимости)
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  const backendDir = dirname(__dirname);
+  const projectRoot = dirname(backendDir);
+  const oldPricesPath = join(projectRoot, 'frontend', 'src', 'data', 'prices.json');
+  
+  // Если новый файл не существует, но старый есть - копируем
+  if (!existsSync(pricesPath) && existsSync(oldPricesPath)) {
+    try {
+      const oldContent = readFileSync(oldPricesPath, 'utf-8');
+      const pricesDir = dirname(pricesPath);
+      if (!existsSync(pricesDir)) {
+        mkdirSync(pricesDir, { recursive: true });
+      }
+      writeFileSync(pricesPath, oldContent, 'utf-8');
+      console.log('Migrated prices.json from old location to data directory');
+    } catch (error: any) {
+      console.warn('Failed to migrate prices.json from old location:', error.message);
+    }
+  }
+}
+
 export async function adminRoutes(fastify: FastifyInstance) {
+  // Выполняем миграцию при инициализации
+  migratePricesFromOldPath();
+  
   // Требуем авторизацию для всех админских роутов
   fastify.addHook('onRequest', async (request, reply) => {
     await requireAuth(request, reply);
@@ -293,10 +326,25 @@ export async function adminRoutes(fastify: FastifyInstance) {
   // Получить цены
   fastify.get('/api/admin/prices', async () => {
     try {
-      const pricesPath = join(process.cwd(), '..', 'frontend', 'src', 'data', 'prices.json');
-      const fileContent = readFileSync(pricesPath, 'utf-8');
-      const pricesData = JSON.parse(fileContent);
-      return { prices: pricesData.prices };
+      // Если файл существует, читаем его
+      if (existsSync(pricesPath)) {
+        const fileContent = readFileSync(pricesPath, 'utf-8');
+        const pricesData = JSON.parse(fileContent);
+        return { prices: pricesData.prices };
+      }
+      
+      // Если файла нет, пытаемся скопировать из .initial (для Docker)
+      const initialPath = join(getDataDir(), 'prices.json.initial');
+      if (existsSync(initialPath)) {
+        const fileContent = readFileSync(initialPath, 'utf-8');
+        const pricesData = JSON.parse(fileContent);
+        // Копируем в основной файл для последующих использований
+        writeFileSync(pricesPath, fileContent, 'utf-8');
+        return { prices: pricesData.prices };
+      }
+      
+      // Если и .initial нет, используем значения по умолчанию
+      return { prices: [250, 300, 350, 400, 500] };
     } catch (error: any) {
       return { prices: [250, 300, 350, 400, 500] }; // Значения по умолчанию
     }
@@ -316,7 +364,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const pricesPath = join(process.cwd(), '..', 'frontend', 'src', 'data', 'prices.json');
+      // Убеждаемся, что директория существует
+      const pricesDir = dirname(pricesPath);
+      if (!existsSync(pricesDir)) {
+        mkdirSync(pricesDir, { recursive: true });
+      }
+      
       const pricesData = { prices: data.prices };
       writeFileSync(pricesPath, JSON.stringify(pricesData, null, 2), 'utf-8');
       return { prices: data.prices };

@@ -55,6 +55,9 @@ WORKDIR /app
 # Создаем директорию для данных
 RUN mkdir -p /app/data/videos
 
+# Копируем исходный prices.json как шаблон для инициализации
+COPY --chown=node:node frontend/src/data/prices.json /app/data/prices.json.initial
+
 # Открываем порт
 EXPOSE 8080
 
