@@ -1052,6 +1052,9 @@ onUnmounted(() => {
   min-width: 0;
   margin-left: -80px;
   padding-left: 80px;
+  padding-bottom: 60px;
+  overflow: visible;
+  min-height: 100%;
 }
 
 .films-showcase.two-films .film-title {
@@ -1074,16 +1077,21 @@ onUnmounted(() => {
 .films-showcase.two-films .film-meta {
   position: relative;
   z-index: 3;
+  overflow: visible;
+  flex-shrink: 0;
 }
 
 .films-showcase.two-films .film-meta-row {
   position: relative;
   z-index: 3;
+  overflow: visible;
+  flex-wrap: wrap;
 }
 
 .films-showcase.two-films .meta-chip {
   position: relative;
   z-index: 3;
+  flex-shrink: 0;
 }
 
 .film-card {
