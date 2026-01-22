@@ -244,7 +244,15 @@ export async function adminRoutes(fastify: FastifyInstance) {
     
     const hallId = data.hallId ?? existing.hallId;
     const filmId = data.filmId ?? existing.filmId;
-    const startAt = data.startAt ?? existing.startAt;
+    
+    // Используем существующее значение startAt, если новое не передано или невалидно
+    let startAt = existing.startAt;
+    if (data.startAt && data.startAt.trim() !== '') {
+      const parsedDate = new Date(data.startAt);
+      if (!isNaN(parsedDate.getTime())) {
+        startAt = data.startAt;
+      }
+    }
     
     // Получаем длительность фильма
     const film = db.prepare('SELECT durationMin FROM films WHERE id = ?')

@@ -858,10 +858,20 @@ function openScheduleCell(date: string, hallId: number) {
 
 function editShowtimeFromSchedule(showtime: any) {
   editingShowtime.value = showtime
+  // Конвертируем ISO datetime в datetime-local формат
+  const startDate = new Date(showtime.startAt)
+  // Получаем локальное время в формате YYYY-MM-DDTHH:mm
+  const year = startDate.getFullYear()
+  const month = String(startDate.getMonth() + 1).padStart(2, '0')
+  const day = String(startDate.getDate()).padStart(2, '0')
+  const hours = String(startDate.getHours()).padStart(2, '0')
+  const minutes = String(startDate.getMinutes()).padStart(2, '0')
+  const localDateTime = `${year}-${month}-${day}T${hours}:${minutes}`
+  
   showtimeForm.value = {
     hallId: showtime.hallId,
     filmId: showtime.filmId,
-    startAt: showtime.startAt.slice(0, 16), // datetime-local format
+    startAt: localDateTime,
     priceFrom: showtime.priceFrom,
     note: showtime.note,
     isHidden: showtime.isHidden
@@ -1079,9 +1089,13 @@ function openShowtimeModal(showtime?: Showtime) {
   if (showtime) {
     // Конвертируем ISO datetime в datetime-local формат
     const startDate = new Date(showtime.startAt)
-    const localDateTime = new Date(startDate.getTime() - startDate.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16)
+    // Получаем локальное время в формате YYYY-MM-DDTHH:mm
+    const year = startDate.getFullYear()
+    const month = String(startDate.getMonth() + 1).padStart(2, '0')
+    const day = String(startDate.getDate()).padStart(2, '0')
+    const hours = String(startDate.getHours()).padStart(2, '0')
+    const minutes = String(startDate.getMinutes()).padStart(2, '0')
+    const localDateTime = `${year}-${month}-${day}T${hours}:${minutes}`
     
     showtimeForm.value = {
       ...showtime,
@@ -1089,9 +1103,12 @@ function openShowtimeModal(showtime?: Showtime) {
     }
   } else {
     const now = new Date()
-    const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16)
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    const hours = String(now.getHours()).padStart(2, '0')
+    const minutes = String(now.getMinutes()).padStart(2, '0')
+    const localDateTime = `${year}-${month}-${day}T${hours}:${minutes}`
     
     showtimeForm.value = {
       hallId: 1,
@@ -1112,9 +1129,13 @@ function copyShowtime(showtime: Showtime) {
   isCopyingShowtime.value = true
   // Конвертируем ISO datetime в datetime-local формат
   const startDate = new Date(showtime.startAt)
-  const localDateTime = new Date(startDate.getTime() - startDate.getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 16)
+  // Получаем локальное время в формате YYYY-MM-DDTHH:mm
+  const year = startDate.getFullYear()
+  const month = String(startDate.getMonth() + 1).padStart(2, '0')
+  const day = String(startDate.getDate()).padStart(2, '0')
+  const hours = String(startDate.getHours()).padStart(2, '0')
+  const minutes = String(startDate.getMinutes()).padStart(2, '0')
+  const localDateTime = `${year}-${month}-${day}T${hours}:${minutes}`
   
   showtimeForm.value = {
     hallId: showtime.hallId,
@@ -1138,25 +1159,41 @@ function closeShowtimeModal() {
 async function saveShowtime() {
   showtimeError.value = ''
   try {
-    // Конвертируем datetime-local в ISO
-    const localDateTime = showtimeForm.value.startAt!
-    const isoDateTime = new Date(localDateTime).toISOString()
+    // Подготавливаем данные для отправки
+    const data: Partial<Showtime> = { ...showtimeForm.value }
     
-    const data = {
-      ...showtimeForm.value,
-      startAt: isoDateTime
+    // Конвертируем datetime-local в ISO только если startAt заполнен
+    if (data.startAt) {
+      // datetime-local формат: "YYYY-MM-DDTHH:mm"
+      // Создаем дату в локальном времени и конвертируем в ISO
+      const localDateTime = data.startAt as string
+      const date = new Date(localDateTime)
+      
+      // Проверяем, что дата валидна
+      if (isNaN(date.getTime())) {
+        throw new Error('Некорректная дата и время')
+      }
+      
+      data.startAt = date.toISOString()
+    } else if (editingShowtime.value?.id) {
+      // Если редактируем и startAt не указан, используем существующее значение
+      // Не добавляем startAt в data, чтобы бэкенд использовал existing.startAt
+      delete data.startAt
     }
     
     if (editingShowtime.value?.id) {
       await updateShowtime(editingShowtime.value.id, data)
     } else {
+      if (!data.startAt) {
+        throw new Error('Необходимо указать дату и время начала')
+      }
       await createShowtime(data as Showtime)
     }
     await loadShowtimes()
     await loadWeekShowtimes() // Обновляем расписание недели
     closeShowtimeModal()
   } catch (err: any) {
-    showtimeError.value = err.response?.data?.message || err.response?.data?.error || 'Ошибка сохранения'
+    showtimeError.value = err.response?.data?.message || err.response?.data?.error || err.message || 'Ошибка сохранения'
   }
 }
 
